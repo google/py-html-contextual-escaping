@@ -5,6 +5,7 @@ An implementation of enough of Go templates to enable testing.
 """
 
 import cStringIO as StringIO
+import escaping
 import re
 
 
@@ -69,10 +70,26 @@ class Node(object):
 
     def clone(self):
         """A structural copy"""
+        return self.with_children([child.clone() for child in self.children()])
+
+    def children(self):
+        """Returns a tuple of the child nodes."""
+        raise Exception("Not overridden")
+
+    def with_children(self, children):
+        """
+        Returns a copy of this but with the given children.
+        """
         raise Exception("Not overridden")
 
     def __str__(self):
         raise Exception("Not overridden")
+
+
+class ExprNode(Node):
+    """A node that is executed for its value"""
+    def __init__(self, src, line):
+        Node.__init__(self, src, line)
 
 
 class TextNode(Node):
@@ -88,7 +105,11 @@ class TextNode(Node):
     def execute(self, env, out):
         out.write(self.text)
 
-    def clone(self):
+    def children(self):
+        return ()
+
+    def with_children(self, children):
+        assert len(children) == 0
         return TextNode(self.src, self.line, self.text)
 
     def __str__(self):
@@ -109,21 +130,25 @@ class InterpolationNode(Node):
                 value = str(value)
             out.write(value)
 
-    def clone(self):
-        return InterpolationNode(self.src, self.line, self.expr.clone())
+    def children(self):
+        return (self.expr,)
+
+    def with_children(self, children):
+        assert(1 == len(children))
+        return InterpolationNode(self.src, self.line, children[0])
 
     def __str__(self):
         return "{{%s}}" % self.expr
 
 
-class ReferenceNode(Node):
+class ReferenceNode(ExprNode):
     """
     An expression node (a node that execute()s to a return value)
     whose value is determined soley by property lookups on the data value.
     """
 
     def __init__(self, src, line, properties):
-        Node.__init__(self, src, line)
+        ExprNode.__init__(self, src, line)
         self.properties = tuple(properties)
 
     def execute(self, env, out):
@@ -134,18 +159,22 @@ class ReferenceNode(Node):
             data = data.get(prop)
         return data
 
-    def clone(self):
+    def children(self):
+        return ()
+
+    def with_children(self, children):
+        assert len(children) == 0
         return ReferenceNode(self.src, self.line, self.properties)
 
     def __str__(self):
         return ".%s" % '.'.join(self.properties)
 
 
-class CallNode(Node):
+class CallNode(ExprNode):
     """An function call"""
 
     def __init__(self, src, line, name, args):
-        Node.__init__(self, src, line)
+        ExprNode.__init__(self, src, line)
         self.name = name
         self.args = tuple(args)
 
@@ -153,9 +182,11 @@ class CallNode(Node):
         return env.fns[self.name](
             *[arg.execute(env, out) for arg in self.args])
 
-    def clone(self):
-        return CallNode(
-            self.src, self.line, [arg.clone() for arg in self.args])
+    def children(self):
+        return self.args
+
+    def with_children(self, children):
+        return CallNode(self.src, self.line, self.name, children)
 
     def __str__(self):
         if len(self.args) == 1:
@@ -165,11 +196,11 @@ class CallNode(Node):
                 self.name, ", ".join([str(arg) for arg in self.args]))
 
 
-class StrLitNode(Node):
+class StrLitNode(ExprNode):
     """A string literal in an expression"""
 
     def __init__(self, src, line, value):
-        Node.__init__(self, src, line)
+        ExprNode.__init__(self, src, line)
         if type(value) not in (str, unicode):
             value = str(value)
         self.value = value
@@ -177,7 +208,11 @@ class StrLitNode(Node):
     def execute(self, env, out):
         return self.value
 
-    def clone(self):
+    def children(self):
+        return ()
+
+    def with_children(self, children):
+        assert len(children) == 0
         return StrLitNode(self.src, self.line, self.value)
 
     def __str__(self):
@@ -198,10 +233,17 @@ class TemplateNode(Node):
             env = env.with_data(self.expr.execute(env, None))
         env.templates[name].execute(env, out)
 
-    def clone(self):
-        expr = self.expr
-        if expr:
-            expr = expr.clone()
+    def children(self):
+        if self.expr:
+            return (self.name, self.expr)
+        return (self.name,)
+
+    def with_children(self, children):
+        assert len(children) <= 2
+        name = children[0]
+        expr = None
+        if len(children) == 2:
+            expr = children[1]
         return TemplateNode(self.src, self.line, self.name.clone(), expr)
 
     def __str__(self):
@@ -211,15 +253,41 @@ class TemplateNode(Node):
             expr_str = " %s" % self.expr
         return "{{template %s%s}}" % (self.name, expr_str)
 
-
-class WithNode(Node):
-    """Executes body in a more specific data context."""
-
-    def __init__(self, src, line, expr, body, else_clause):
+class BlockNode(Node):
+    def __init__(self, src, line, name, expr, body, else_clause):
         Node.__init__(self, src, line)
+        self.name = name
         self.expr = expr
         self.body = body
         self.else_clause = else_clause
+
+    def children(self):
+        if self.else_clause:
+            return (self.expr, self.body, self.else_clause)
+        return (self.expr, self.body)
+
+    def with_children(self, children):
+        expr = children[0]
+        body = children[1]
+        else_clause = None
+        if len(children) > 2:
+            assert len(children) == 3
+            else_clause = children[2]
+        return type(self)(self.src, self.line, expr, body, else_clause)
+
+    def __str__(self):
+        else_clause = self.else_clause
+        if else_clause:
+            return "{{%s %s}}%s{{else}}%s{{end}}" % (
+                self.name, self.expr, self.body, else_clause)
+        return "{{%s %s}}%s{{end}}" % (self.name, self.expr, self.body)
+
+
+class WithNode(BlockNode):
+    """Executes body in a more specific data context."""
+
+    def __init__(self, src, line, expr, body, else_clause):
+        BlockNode.__init__(self, src, line, 'with', expr, body, else_clause)
 
     def execute(self, env, out):
         data = self.expr.execute(env, None)
@@ -228,61 +296,25 @@ class WithNode(Node):
         elif self.else_clause:
             self.else_clause.execute(env, out)
 
-    def clone(self):
-        expr = self.expr.clone()
-        body = self.body.clone()
-        else_clause = self.else_clause
-        if else_clause:
-            else_clause = else_clause.clone()
-        return WithNode(self.src, self.line, expr, body, else_clause)
 
-    def __str__(self):
-        else_clause = self.else_clause
-        if else_clause:
-            return "{{with %s}}%s{{else}}%s{{end}}" % (
-                self.expr, self.body, else_clause)
-        return "{{with %s}}%s{{end}}" % (self.expr, self.body)
-
-
-class IfNode(Node):
+class IfNode(BlockNode):
     """Conditional."""
 
-    def __init__(self, src, line, expr, then_clause, else_clause):
-        Node.__init__(self, src, line)
-        self.expr = expr
-        self.then_clause = then_clause
-        self.else_clause = else_clause
+    def __init__(self, src, line, expr, body, else_clause):
+        BlockNode.__init__(self, src, line, 'if', expr, body, else_clause)
 
     def execute(self, env, out):
         if self.expr.execute(env, None):
-            self.then_clause.execute(env, out)
+            self.body.execute(env, out)
         elif self.else_clause:
             self.else_clause.execute(env, out)
 
-    def clone(self):
-        expr = self.expr.clone()
-        then_clause = self.then_clause.clone()
-        else_clause = self.else_clause
-        if else_clause:
-            else_clause = else_clause.clone()
-        return IfNode(self.src, self.line, expr, then_clause, else_clause)
 
-    def __str__(self):
-        else_clause = self.else_clause
-        if else_clause:
-            return "{{if %s}}%s{{else}}%s{{end}}" % (
-                self.expr, self.then_clause, else_clause)
-        return "{{if %s}}%s{{end}}" % (self.expr, self.then_clause)
-
-
-class RangeNode(Node):
+class RangeNode(BlockNode):
     """Loop."""
 
     def __init__(self, src, line, expr, body, else_clause):
-        Node.__init__(self, src, line)
-        self.expr = expr
-        self.body = body
-        self.else_clause = else_clause
+        BlockNode.__init__(self, src, line, 'range', expr, body, else_clause)
 
     def execute(self, env, out):
         iterable = self.expr.execute(env, None)
@@ -292,39 +324,26 @@ class RangeNode(Node):
         elif self.else_clause:
             self.else_clause.execute(env, out)
 
-    def clone(self):
-        expr = self.expr.clone()
-        body = self.body.clone()
-        else_clause = self.else_clause
-        if else_clause:
-            else_clause = else_clause.clone()
-        return RangeNode(self.src, self.line, expr, body, else_clause)
-
-    def __str__(self):
-        else_clause = self.else_clause
-        if else_clause:
-            return "{{range %s}}%s{{else}}%s{{end}}" % (
-                self.expr, self.body, else_clause)
-        return "{{range %s}}%s{{end}}" % (self.expr, self.body)
-
 
 class ListNode(Node):
     """The concatenation of a series of nodes."""
 
-    def __init__(self, src, line, children):
+    def __init__(self, src, line, elements):
         Node.__init__(self, src, line)
-        self.children = tuple(children)
+        self.elements = tuple(elements)
 
     def execute(self, env, out):
-        for child in self.children:
+        for child in self.elements:
             child.execute(env, out)
 
-    def clone(self):
-        return ListNode(
-            self.src, self.line, [child.clone() for child in self.children])
+    def children(self):
+        return self.elements
+
+    def with_children(self, children):
+        return ListNode(self.src, self.line, children)
 
     def __str__(self):
-        return ''.join([str(child) for child in self.children])
+        return ''.join([str(child) for child in self.elements])
 
 
 def parse_templates(src, code, name=None):
@@ -459,7 +478,8 @@ def parse_templates(src, code, name=None):
         """Parse an expression"""
         expr, remainder = parse_expr_prefix(lines[pos], expr_text)
         if remainder:
-            fail(pos, 'Trailing content in expression: %s' % remainder)
+            fail(pos, 'Trailing content in expression: %s^%s'
+                 % (expr_text[:-len(remainder)], remainder))
         return expr
 
     def parse_expr_prefix(line, expr_text):
@@ -503,10 +523,15 @@ def parse_templates(src, code, name=None):
         def parse_pipeline(epos):
             expr, epos = parse_atom(epos)
             epos = skip_ignorable(epos)
+            print 'etokens=%r, epos=%d' % (etokens, epos)
             while epos < len(etokens) and etokens[epos] == '|':
-                right = parse_name(epos)
+                right, epos = parse_name(epos+1)
+                print 'parsed right %s at %d' % (right, epos)
                 expr = CallNode(src, expr.line, right, (expr,))
-                epos = skip_ignorable(epos + 1)
+                print 'pre skip %d' % (epos)
+                epos = skip_ignorable(epos)  # Consume name and space.
+                print 'post skip %d' % epos
+            print 'returning %s, %s' % (expr, epos)
             return expr, epos
 
         def parse_atom(epos):
@@ -523,8 +548,8 @@ def parse_templates(src, code, name=None):
                         epos+1)
             # Assume a function call.
             line = line_ref[0]
-            name = parse_name(epos)
-            epos = skip_ignorable(epos + 1)
+            name, epos = parse_name(epos)
+            epos = skip_ignorable(epos)
             epos = expect(epos, '(')
             epos = skip_ignorable(epos + 1)
             args = []
@@ -541,15 +566,17 @@ def parse_templates(src, code, name=None):
 
         def parse_name(epos):
             """
-            Returns the value of the identifier token at etokens[epos]
-            or fails with a useful error message.
+            Returns the value of the identifier token at etokens[epos] and
+            the position after the identifier or fails with a useful
+            error message.
             """
+            epos = skip_ignorable(epos)
             if epos == len(etokens):
                 fail('missing function name at end of %s' % expr_text)
             etok = etokens[epos]
             if not re.search(r'^[A-Za-z][A-Za-z0-9]*$', etok):
                 fail('expected function name but got %s' % etok)
-            return etok
+            return etok, epos+1
 
         def unescape(str_lit):
             """ r'foo\bar' -> 'foo\bar' """
@@ -585,5 +612,16 @@ def parse_templates(src, code, name=None):
 def escape(env, name):
     """Renders the named template safe for evaluation."""
     assert name in env.templates
-    # TODO
+    env.fns['html'] = escaping.escape_html
+
+    def esc(node):
+        if isinstance(node, InterpolationNode):
+            return node.with_children(
+                (CallNode(node.src, node.line, 'html', (node.expr,)),))
+        elif isinstance(node, ExprNode):
+            return node
+        return node.with_children([esc(child) for child in node.children()])
+
+    env.templates[name] = esc(env.templates[name])
+    
     return env
