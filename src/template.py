@@ -502,7 +502,7 @@ def parse_templates(loc, code, name=None):
             template_name, name_and_data = _parse_expr(
                 loc, name_and_data, consume_all=False)
             expr = None
-            if name_and_data.strip():
+            if not name_and_data.is_empty():
                 # TODO: wrong line number if there are linebreaks in the name
                 # portion.
                 expr = _parse_expr(loc, name_and_data)
@@ -544,7 +544,7 @@ def parse_templates(loc, code, name=None):
     return env
 
 
-def _parse_expr(loc, expr_text, consume_all=True):
+def _parse_expr(loc, toks, consume_all=True):
     """
     Parse an expression from the front of the given text.
 
@@ -555,113 +555,83 @@ def _parse_expr(loc, expr_text, consume_all=True):
     returned as a tuple.
     """
 
-    if type(loc) in (str, unicode):
-        loc = Loc(loc)
-    assert hasattr(loc, 'src') and hasattr(loc, 'line')
-    assert type(expr_text) in (str, unicode)
+    if type(toks) in (str, unicode):
+        toks = _ExprTokens(
+            loc,
+            re.findall(
+                (r'[^\t\n\r \x27\x22()\|,]+'  # Non-breaking characters.
+                 r'|[\t\n\r ]+'  # Whitespace
+                 r'|[()\|,]'  # Punctuation
+                 # We parse all possible sequences starting with a quote so
+                 # that quotes are not silently dropped, and enforce string
+                 # well-formedness later.
+                 r'|\x27(?:[^\\\x27\n\r]|\\[\n\r])*\x27?'  # '...'
+                 r'|\x22(?:[^\\\x22\n\r]|\\[\n\r])*\x22?'),  # "..."
+                toks))
+    assert isinstance(toks, _ExprTokens)
     assert type(consume_all) is bool
 
-    line_ref = [loc.line]
-    etokens = re.findall(
-        (r'[^\t\n\r \x27\x22()\|,]+'  # A run of non-breaking characters.
-         r'|[\t\n\r ]+'  # Whitespace
-         r'|[()\|,]'  # Punctuation
-         # Below we make sure that we parse all possible sequences starting
-         # with a quote character so that quotes are not silently dropped,
-         # and check well-formedness below.
-         r'|\x27(?:[^\\\x27\n\r]|\\[\n\r])*\x27?'  # '...'
-         r'|\x22(?:[^\\\x22\n\r]|\\[\n\r])*\x22?'),  # "..."
-        expr_text)
-
-    def skip_ignorable(epos):
-        """Consumes white-space tokens"""
-        while epos < len(etokens) and not etokens[epos].strip():
-            line_ref[0] += len(etokens[epos].split('\n')) - 1
-            epos += 1
-        return epos
-
-    def loc_at():
-        """
-        The location of the token cursor.
-        """
-        return Loc(loc.src, line_ref[0])
-
-    def fail(msg):
-        raise Exception('%s: %s' % (loc_at(), msg))
-
-    def expect(epos, token):
-        """Advance one token if it matches or fail with an error message."""
-        if epos == len(etokens):
-            fail('Expected %s at end of input' % token)
-        if etokens[epos] != token:
-            fail('Expected %s, got %s' % (token, etokens[epos]))
-        return epos + 1
+    all_toks = _ExprTokens(toks.loc, toks.tokens)
 
     # There are two precedence levels.
     # highest - string literals, references, calls
     # lowest  - pipelines
-    epos = 0
 
-    def parse_pipeline(epos):
-        expr, epos = parse_atom(epos)
-        epos = skip_ignorable(epos)
-        while epos < len(etokens) and etokens[epos] == '|':
-            right, epos = parse_name(epos+1)
-            expr = CallNode(expr.loc, right, (expr,))
-            epos = skip_ignorable(epos)  # Consume name and space.
-        return expr, epos
+    def parse_pipeline():
+        expr = parse_atom()
+        while toks.check('|'):
+            expr = CallNode(expr.loc, parse_name(), (expr,))
+        return expr
 
-    def parse_atom(epos):
-        epos = skip_ignorable(epos)
-        if epos == len(etokens):
-            fail('missing expression part at end of %s' % expr_text)
-        loc = loc_at()
-        etoken = etokens[epos]
-        ch0 = etoken[0]
+    def parse_atom():
+        toks.skip_ignorable()
+        token = toks.peek()
+        if token is None:
+            toks.fail('missing expression part at end of %s' % all_toks)
+        loc = toks.loc_at()
+        ch0 = token[0]
         if ch0 == '.':  # Reference
-            if etoken != '.':
+            if token != '.':
                 # .Foo.Bar -> ['Foo', 'Bar'] so we can lookup data elements
                 # in order.
-                parts = etoken[1:].split('.')
+                parts = token[1:].split('.')
             else:
                 # . means all data, so use () because following zero key
                 # traversals leaves from data leaves us in the right place.
                 parts = ()
-            return ReferenceNode(loc_at(), parts), epos+1
+            toks.consume()
+            return ReferenceNode(loc, parts)
         if ch0 in ('"', "'"):
-            if len(etoken) < 2 or etoken[-1] != ch0:
-                fail('malformed string literal %s' % etoken)
-            return StrLitNode(loc, unescape(etoken)), epos+1
+            if len(token) < 2 or token[-1] != ch0:
+                toks.fail('malformed string literal %s' % token)
+            toks.consume()
+            return StrLitNode(loc, unescape(token))
         # Assume a function call.
-        name, epos = parse_name(epos)
-        epos = skip_ignorable(epos)
-        epos = expect(epos, '(')
-        epos = skip_ignorable(epos)
+        name = parse_name()
+        toks.expect('(')
         args = []
-        if epos < len(etokens) and etokens[epos] != ')':
+        if not toks.check(')'):
             while True:
-                arg, epos = parse_pipeline(epos)
-                args.append(arg)
-                epos = skip_ignorable(epos)
-                if epos == len(etokens) or etokens[epos] != ',':
+                args.append(parse_pipeline())
+                if not toks.check(','):
                     break
-                epos += 1
-        epos = expect(epos, ')')
-        return CallNode(loc, name, args), epos
+            toks.expect(')')
+        return CallNode(loc, name, args)
 
-    def parse_name(epos):
+    def parse_name():
         """
         Returns the value of the identifier token at etokens[epos] and
         the position after the identifier or fails with a useful
         error message.
         """
-        epos = skip_ignorable(epos)
-        if epos == len(etokens):
-            fail('missing function name at end of %s' % expr_text)
-        etok = etokens[epos]
-        if not re.search(r'^[A-Za-z][A-Za-z0-9]*$', etok):
-            fail('expected function name but got %s' % etok)
-        return etok, epos+1
+        toks.skip_ignorable()
+        token = toks.peek()
+        if token is None:
+            toks.fail('missing function name at end of %s' % all_toks)
+        if not re.search(r'^[A-Za-z][A-Za-z0-9]*$', token):
+            toks.fail('expected function name but got %s' % token)
+        toks.consume()
+        return token
 
     def unescape(str_lit):
         """ r'foo\bar' -> 'foo\bar' """
@@ -669,17 +639,128 @@ def _parse_expr(loc, expr_text, consume_all=True):
             # See http://docs.python.org/library/codecs.html
             return str_lit[1:-1].decode('string_escape')
         except ValueError:
-            fail('invalid string literal %s' % str_lit)
+            toks.fail('invalid string literal %s' % str_lit)
 
-    expr, epos = parse_pipeline(epos)
-    epos = skip_ignorable(epos)
-    remainder = ''.join(etokens[epos:])
+    expr = parse_pipeline()
+    toks.skip_ignorable()
     if consume_all:
-        if remainder:
-            fail('Trailing content in expression: %s^%s'
-                 % (expr_text[:-len(remainder)], remainder))
+        if not toks.is_empty():
+            remainder = str(toks)
+            all_code = str(all_toks)
+            toks.fail('Trailing content in expression: %s^%s'
+                      % (all_code[:-len(remainder)], remainder))
         return expr
-    return expr, remainder
+    return expr, toks
+
+
+class _Tokens(object):
+    """
+    A cursor over a sequence of tokens.
+    """
+
+    def __init__(self, loc, tokens):
+        if type(loc) in (str, unicode):
+            loc = Loc(loc)
+        assert hasattr(loc, 'src') and hasattr(loc, 'line')
+        self.loc = loc
+        self.tokens = tuple(tokens)
+        self.line = loc.line
+
+    def is_empty(self):
+        """
+        True if there are uncomsumed tokens remaining.
+        """
+        return not self.tokens
+
+    def is_ignorable(self):
+        """
+        True if the token at the front of the queue is ignorable.
+        The default implementation returns False for all tokens,
+        but may be overridden.
+        """
+        return False
+
+    def skip_ignorable(self):
+        """Consumes white-space tokens"""
+        while not self.is_empty() and self.is_ignorable():
+            self.consume()
+
+    def loc_at(self):
+        """
+        The location of the token cursor.
+        """
+        return Loc(self.loc.src, self.line)
+
+    def fail(self, msg):
+        """
+        Raises a parse exception including the location of the cursor.
+        """
+        raise Exception('%s: %s' % (self.loc_at(), msg))
+
+    def peek(self):
+        """
+        The token at the cursor or None if the cursor has reached the
+        end of the input.
+        """
+        if not self.tokens:
+            return None
+        return self.tokens[0]
+
+    def consume(self, n_tokens=1):
+        """
+        Advances the cursor past the current token.
+        """
+        line = self.line
+        for consumed in self.tokens[:n_tokens]:
+            pos = -1
+            while True:
+                pos = consumed.find('\n', pos+1)
+                if pos < 0:
+                    break
+                line += 1
+        self.line, self.tokens = line, self.tokens[n_tokens:]
+
+    def check(self, token):
+        """
+        If the first unignorable token matches the given token,
+        consumes it and returns True, otherwise returns False.
+        """
+        self.skip_ignorable()
+        if self.peek() != token:
+            return False
+        self.consume()
+        return True
+
+    def expect(self, token):
+        """
+        Consume the first unignorable token if it matches token, otherwise
+        fail with an error message.
+        """
+        if not self.check(token):
+            if self.is_empty():
+                self.fail('Expected %s at end of input' % token)
+            else:
+                self.fail('Expected %s, got %s' % (token, self.peek()))
+
+    def __str__(self):
+        """
+        The text of the unconsumed tokens.
+        """
+        return ''.join(tokens)
+
+
+class _ExprTokens(_Tokens):
+    """
+    A token queue suitable for parsing ExprNodes.
+    """
+    
+    def __init__(self, loc, tokens):
+        _Tokens.__init__(self, loc, tokens)
+
+    def is_ignorable(self):
+        token = self.peek()
+        if token is not None and not token.strip():
+            return True
 
 
 def escape(env, name):
