@@ -248,6 +248,7 @@ class _Transition(object):
         prior - The context prior to the token in match.
         match - The token matched by self.pattern.
         """
+        assert self and type(prior) is int and hasattr(match, 'group')
         return True
 
     def compute_next_context(self, prior, match):
@@ -260,7 +261,7 @@ class _Transition(object):
 
         Returns the context after the given token.
         """
-        raise Exception("NOT IMPLEMENTED")
+        raise NotImplementedError('abstract')
 
 class _ToTransition(_Transition):
     """

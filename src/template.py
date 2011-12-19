@@ -66,7 +66,7 @@ class Node(object):
         Appends output to out if a statement node,
         or returns the value if an expression node.
         """
-        raise Exception("Not overridden")
+        raise NotImplementedError('abstract')
 
     def clone(self):
         """A structural copy"""
@@ -74,16 +74,16 @@ class Node(object):
 
     def children(self):
         """Returns a tuple of the child nodes."""
-        raise Exception("Not overridden")
+        raise NotImplementedError('abstract')
 
     def with_children(self, children):
         """
         Returns a copy of this but with the given children.
         """
-        raise Exception("Not overridden")
+        raise NotImplementedError('abstract')
 
     def __str__(self):
-        raise Exception("Not overridden")
+        raise NotImplementedError('abstract')
 
 
 class ExprNode(Node):
