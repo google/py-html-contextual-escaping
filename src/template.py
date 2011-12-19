@@ -520,8 +520,11 @@ def _parse_expr(src, line, expr_text, consume_all=True):
         (r'[^\t\n\r \x27\x22()\|,]+'  # A run of non-breaking characters.
          r'|[\t\n\r ]+'  # Whitespace
          r'|[()\|,]'  # Punctuation
-         r'|\x27(?:[^\\\x27]|\\.)*\x27?'  # '...'
-         r'|\x22(?:[^\\\x22]|\\.)*\x22?'),  # "..."
+         # Below we make sure that we parse all possible sequences starting
+         # with a quote character so that quotes are not silently dropped,
+         # and check well-formedness below.
+         r'|\x27(?:[^\\\x27\n\r]|\\[\n\r])*\x27?'  # '...'
+         r'|\x22(?:[^\\\x22\n\r]|\\[\n\r])*\x22?'),  # "..."
         expr_text)
 
     def skip_ignorable(epos):
