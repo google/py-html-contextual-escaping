@@ -138,7 +138,7 @@ def escape_html(value):
     addition to '&', '<', and '>' so that a string can be included in an HTML
     tag attribute value within double quotes.
     Will emit known safe HTML as-is.
-    
+
     value - The string-like value to be escaped.  May not be a string,
             but the value will be coerced to a string.
 
@@ -353,7 +353,7 @@ def escape_js_regex(value):
         if type(value) not in (str, unicode):
             value = str(value)
         escaped = _escape_js_regex_helper(value)
-    
+
     if not escaped:
         # Matches nothing but does not cause /{$foo}/ to become a line-comment
         # when $foo is the empty string.
@@ -373,7 +373,7 @@ def _pct_encode(match):
         return '%%%02x' % ord(value)
     return "".join(["%%%02x" % ord(char) for char in value])
 
-def escape_uri(value):
+def escape_url(value):
     """
     Escapes a string so that it can be safely included in a URL.
 
@@ -387,7 +387,7 @@ def escape_uri(value):
         return ""
     if (isinstance(value, content.TypedContent)
         and value.kind == content.CONTENT_KIND_URL):
-        return normalize_uri(value.content)
+        return normalize_url(value.content)
     if type(value) not in (str, unicode):
         value = str(value)
 
@@ -415,7 +415,7 @@ def escape_uri(value):
 _NOT_URL_UNRESERVED_AND_SPECIAL = re.compile(
     r"(?:[^0-9A-Za-z\._~:/?#\[\]@!$&*+,;=%\-]|%(?![0-9A-Fa-f]{2}))+")
 
-def normalize_uri(value):
+def normalize_url(value):
     """
     Removes rough edges from a URL by escaping any raw
     HTML/JS string delimiters.
@@ -434,7 +434,7 @@ def normalize_uri(value):
     return _NOT_URL_UNRESERVED_AND_SPECIAL.sub(_pct_encode, value)
 
 
-def filter_normalize_uri(value):
+def filter_normalize_url(value):
     """
     Vets a URL's protocol and removes rough edges from a URL by escaping
     any raw HTML/JS string delimiters.
@@ -451,7 +451,7 @@ def filter_normalize_uri(value):
         value = str(value)
     if not _FILTER_FOR_FILTER_NORMALIZE_URL.match(value):
         return "#zSafehtmlz"
-    return normalize_uri(value)
+    return normalize_url(value)
 
 
 def escape_css_string(value):
@@ -536,19 +536,19 @@ _MATCHER_FOR_ESCAPE_HTML = re.compile(r'[\x00"&\x27<>]')
 _MATCHER_FOR_NORMALIZE_HTML = re.compile(r'[\x00"\x27<>]')
 
 _MATCHER_FOR_ESCAPE_HTML_NOSPACE = re.compile(
-    r'[\x00\x09-\x0d "&\x27\-\/<->`\x85\xa0\u2028\u2029]')
+    ur'[\x00\x09-\x0d "&\x27\-\/<=>\`\x85\xa0\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_HTML_NOSPACE = re.compile(
-    r'[\x00\x09-\x0d "\x27\-\/<->`\x85\xa0\u2028\u2029]')
+    ur'[\x00\x09-\x0d "\x27\-\/<=>`\x85\xa0\u2028\u2029]')
 
 _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
-    r'[\x00\x08-\x0d"&\x27\/<->\\\x85\u2028\u2029]')
+    ur'[\x00\x08-\x0d"&\x27\/<=>\\\x85\u2028\u2029]')
 
 _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
-    r'[\x00\x08-\x0d"$&-\/:<-?\[-^\x7b-\x7d\x85\u2028\u2029]')
+    ur'[\x00\x08-\x0d"$&-\/:<-?\[-^\x7b-\x7d\x85\u2028\u2029]')
 
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
-    r'[\x00\x08-\x0d"&-*\/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
+    ur'[\x00\x08-\x0d"&-*\/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
 
 _FILTER_FOR_FILTER_CSS_VALUE = re.compile(
     r'(?i)^(?!-*(?:expression|(?:moz-)?binding))'
@@ -630,6 +630,6 @@ SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_JS_VALUE ] = escape_js_value
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_JS_REGEX ] = escape_js_regex
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_CSS_STRING ] = escape_css_string
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_CSS_VALUE ] = filter_css_value
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_URL ] = escape_uri
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_NORMALIZE_URL ] = normalize_uri
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_NORMALIZE_URL ] = filter_normalize_uri
+SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_URL ] = escape_url
+SANITIZER_FOR_ESC_MODE[ ESC_MODE_NORMALIZE_URL ] = normalize_url
+SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_NORMALIZE_URL ] = filter_normalize_url
