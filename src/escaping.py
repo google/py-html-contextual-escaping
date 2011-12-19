@@ -497,7 +497,7 @@ def _replacer_for_html(match):
     group = match.group(0)
     encoded = _ESCAPE_MAP_FOR_HTML.get(group)
     if encoded is None:
-        encoded = "&#" + ord(group) + ";"
+        encoded = "&#%d;" % ord(group)
         _ESCAPE_MAP_FOR_HTML[group] = encoded
     return encoded
 
