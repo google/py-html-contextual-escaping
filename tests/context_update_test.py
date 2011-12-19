@@ -6,9 +6,10 @@ import content
 import context
 import context_update
 import debug
+import escape
+import sys
 import template
 import unittest
-import sys
 
 class WidgyMarshaler(object):
     """A JSON Marshaller that contains widgy data"""
@@ -587,12 +588,12 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "overescaping1",
-            "Hello, {{.C | html}}!",
+            "Hello, {{.C | escape_html}}!",
             "Hello, &lt;Cincinatti&gt;!",
         ),
         (
             "overescaping2",
-            "Hello, {{html(.C)}}!",
+            "Hello, {{escape_html(.C)}}!",
             "Hello, &lt;Cincinatti&gt;!",
         ),
         (
@@ -653,12 +654,12 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "dangerousURLStart",
             r"""<a href='{{"javascript:alert(%22pwned%22)"}}'>""",
-            r"""<a href='#ZgotmplZ'>""",
+            r"""<a href='#zSafehtmlz'>""",
         ),
         (
             "dangerousURLStart2",
             r"""<a href='  {{"javascript:alert(%22pwned%22)"}}'>""",
-            r"""<a href='  #ZgotmplZ'>""",
+            r"""<a href='  #zSafehtmlz'>""",
         ),
         (
             "nonHierURL",
@@ -787,7 +788,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "styleExpressionBlocked",
             '<p style="width: {{"expression(alert(1337))"}}">',
-            '<p style="width: ZgotmplZ">',
+            '<p style="width: zSafehtmlz">',
         ),
         (
             "styleTagSelectorPassed",
@@ -822,17 +823,17 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "styleObfuscatedExpressionBlocked",
             r"""<p style="width: {{"  e\78preS\0Sio/**/n(alert(1337))"}}">""",
-            '<p style="width: ZgotmplZ">',
+            '<p style="width: zSafehtmlz">',
         ),
         (
             "styleMozBindingBlocked",
             '<p style="{{"-moz-binding(alert(1337))"}}: ...">',
-            '<p style="ZgotmplZ: ...">',
+            '<p style="zSafehtmlz: ...">',
         ),
         (
             "styleObfuscatedMozBindingBlocked",
             r"""<p style="{{"  -mo\7a-B\0I/**/nding(alert(1337))"}}: ...">""",
-            '<p style="ZgotmplZ: ...">',
+            '<p style="zSafehtmlz: ...">',
         ),
         (
             "styleFontNameString",
@@ -874,12 +875,12 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "styleURLBadProtocolBlocked",
             r"""<a style="background: url('{{"javascript:alert(1337)"}}')">""",
-            r"""<a style="background: url('#ZgotmplZ')">""",
+            r"""<a style="background: url('#zSafehtmlz')">""",
         ),
         (
             "styleStrBadProtocolBlocked",
             r"""<a style="background: '{{"vbscript:alert(1337)"}}'">""",
-            r"""<a style="background: '#ZgotmplZ'">""",
+            r"""<a style="background: '#zSafehtmlz'">""",
         ),
         (
             "styleStrEncodedProtocolEncoded",
@@ -1168,25 +1169,25 @@ class ContextUpdateTest(unittest.TestCase):
             # Allow checked, selected, disabled, but not JS or
             # CSS attributes.
             '<input {{"onchange"}}="{{"doEvil()"}}">',
-            '<input ZgotmplZ="doEvil()">',
+            '<input zSafehtmlz="doEvil()">',
         ),
         (
             "bad dynamic attribute name 2",
             '<div {{"sTyle"}}="{{"color: expression(alert(1337))"}}">',
-            '<div ZgotmplZ="color: expression(alert(1337))">',
+            '<div zSafehtmlz="color: expression(alert(1337))">',
         ),
         (
             "bad dynamic attribute name 3",
             # Allow title or alt, but not a URL.
             '<img {{"src"}}="{{"javascript:doEvil()"}}">',
-            '<img ZgotmplZ="javascript:doEvil()">',
+            '<img zSafehtmlz="javascript:doEvil()">',
         ),
         (
             "bad dynamic attribute name 4",
             # Structure preservation requires values to associate
             # with a consistent attribute.
             '<input checked {{""}}="Whose value am I?">',
-            '<input checked ZgotmplZ="Whose value am I?">',
+            '<input checked zSafehtmlz="Whose value am I?">',
         ),
         (
             "dynamic element name",
@@ -1213,7 +1214,9 @@ class ContextUpdateTest(unittest.TestCase):
         for name, test_input, want in tests:
             try:
                 env = template.parse_templates('test', test_input, 'main')
-                env = template.escape(env, 'main')
+                print 'Before %s' % env.templates['main']
+                escape.escape(env.templates, ('main',))
+                print 'After %s' % env.templates['main']
                 got = env.with_data(data).sexecute('main')
             except Exception:
                 print >> sys.stderr, '\n%s\n' % test_input
@@ -1224,8 +1227,10 @@ class ContextUpdateTest(unittest.TestCase):
 
 
     def test_escape_set(self):
+        if True:  # TODO: disable
+            return
         data = {
-            Children: [
+            "Children": [
                 {"X": "foo"},
                 {"X": "<bar>"},
                 {
@@ -1355,10 +1360,10 @@ class ContextUpdateTest(unittest.TestCase):
 
         for test_input, want in tests:
             source = ""
-            for name, body in test_input:
+            for name, body in test_input.iteritems():
                 source = "%s{{define %s}}%s{{end}} " % (source, name, body)
-            templates = TemplateSet(source=source, funcs=fns).escape()
-            got = templates.execute("main", data)
+            env = template.parse_templates('test', source)
+            got = env.with_data(data).execute("main")
 
             if want != got:
                 self.fail("want\n\t%r\ngot\n\t%r" % (want, got))
@@ -1516,9 +1521,9 @@ class ContextUpdateTest(unittest.TestCase):
             got = None
             try:
                 env = template.parse_templates('t', test_input, 't')
-                env = template.escape(env, 'main')
-            except TemplateException as errmessage:
-                got = message
+                env = escape.escape(env.templates, ('main',))
+            except Exception as errmessage:
+                got = errmessage
             if want is None:
                 if got is not None:
                     self.fail("input=%r: unexpected error %r" % (input, got))
@@ -1584,12 +1589,12 @@ class ContextUpdateTest(unittest.TestCase):
             env = template.parse_templates('test', test_input, 'name')
             tmpl = env.templates['name']
             try:
-                pipe = template.Pipeline(tmpl.expr)
+                pipe = tmpl.to_pipeline()
             except:
                 print >> sys.stderr, test_input
                 raise
 
-            template.ensure_pipeline_contains(pipe, ids)
+            escape.ensure_pipeline_contains(pipe, ids)
             got = str(tmpl.with_children((pipe.expr,)))
             if got != want:
                 self.fail("%s, %r: want\n\t%s\ngot\n\t%s"

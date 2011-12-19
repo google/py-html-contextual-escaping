@@ -362,14 +362,11 @@ def escape_js_regex(value):
 
 
 # unreserved  = ALPHA / DIGIT / "-" / "." / "_" / "~"
-_NOT_URL_UNRESERVED = re.compile(r"[^0-9A-Za-z._~\-]+")
+_NOT_URL_UNRESERVED = re.compile(r"[^0-9A-Za-z\._~\-]+")
 
-def _pct_encode(value):
+def _pct_encode(match):
     """URL encodes octets in value"""
-    if type(value) not in (str, unicode):
-        value = str(value)
-    if len(value) == 0:
-        return ""
+    value = match.group(0)
     if type(value) is unicode:
         value = value.encode('UTF-8')
     if len(value) == 1:
@@ -416,7 +413,7 @@ def escape_uri(value):
 # production in Appendix D.2 of RFC 3986, so can be encoded without changing
 # semantics.
 _NOT_URL_UNRESERVED_AND_SPECIAL = re.compile(
-    r"(?:[^0-9A-Za-z._~:/?#\[\]@!$&*+,;=%\-]|%(?![0-9A-Fa-f]{2}))+")
+    r"(?:[^0-9A-Za-z\._~:/?#\[\]@!$&*+,;=%\-]|%(?![0-9A-Fa-f]{2}))+")
 
 def normalize_uri(value):
     """

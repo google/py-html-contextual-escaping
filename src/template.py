@@ -10,7 +10,11 @@ import re
 
 
 # Functions available by default.
-_BUILTINS = {}
+_BUILTIN_FNS = {}
+
+for _builtin_fn in escaping.SANITIZER_FOR_ESC_MODE:
+    if _builtin_fn is not None:
+        _BUILTIN_FNS[_builtin_fn.__name__] = _builtin_fn
 
 
 class Env(object):
@@ -53,7 +57,9 @@ class Env(object):
 
 
 class Loc(object):
-    """A location within a source code file."""
+    """
+    A location within a source code file.
+    """
 
     def __init__(self, src, line=1):
         """
@@ -97,6 +103,14 @@ class Node(object):
         """
         raise NotImplementedError('abstract')
 
+    def reduce_traces(self, start_state, analyzer):
+        """
+        Implements the algorithm described in module trace_analysis.
+
+        analyzer - obeys the contract for trace_analysis.Analyzer
+        """
+        raise NotImplementedError('abstract')
+
     def __str__(self):
         raise NotImplementedError('abstract')
 
@@ -109,10 +123,25 @@ class ExprNode(Node):
     def __init__(self, loc):
         Node.__init__(self, loc)
 
+    def evaluate(self, env):
+        """
+        Returns the value that results from evaluating the expression in
+        the given environment.
+        """
+        raise NotImplementedError()
+
+    def execute(self, env, out):
+        return self.execute(env, None)
+
+    def reduce_traces(self, start_state, analyzer):
+        # Trace analysis should not descend into expressions.
+        raise Exception()
+
 
 class TextNode(Node):
     """
-    A chunk of literal text in the template.
+    A chunk of raw text in the template's output language that was supplied
+    by a template author and which is not controllable by an arbitrary user.
     """
 
     def __init__(self, loc, text):
@@ -130,6 +159,17 @@ class TextNode(Node):
         assert len(children) == 0
         return TextNode(self.loc, self.text)
 
+    def to_raw_content(self):
+        """
+        Returns the node's text.
+
+        Satisfies the step value definition used by the trace analyzer.
+        """
+        return self.text
+
+    def reduce_traces(self, start_state, analyzer):
+        return analyzer.step(start_state, self, debug_hint=self.loc)
+
     def __str__(self):
         return self.text
 
@@ -142,7 +182,7 @@ class InterpolationNode(Node):
         self.expr = expr
 
     def execute(self, env, out):
-        value = self.expr.execute(env, None)
+        value = self.expr.evaluate(env)
         if value is not None:
             if type(value) not in (str, unicode):
                 value = str(value)
@@ -154,6 +194,21 @@ class InterpolationNode(Node):
     def with_children(self, children):
         assert(1 == len(children))
         return InterpolationNode(self.loc, children[0])
+
+    def to_pipeline(self):
+        """
+        Satisfies the step value definition used by the trace analyzer.
+
+        Returns a Pipeline-like value that supports element_at and
+        insert_element_at.
+        """
+        return Pipeline(self.expr)
+
+    def with_pipeline(self, pipeline):
+        return InterpolationNode(self.loc, pipeline.expr)
+
+    def reduce_traces(self, start_state, analyzer):
+        return analyzer.step(start_state, self, debug_hint=self.loc)
 
     def __str__(self):
         return "{{%s}}" % self.expr
@@ -169,7 +224,7 @@ class ReferenceNode(ExprNode):
         ExprNode.__init__(self, loc)
         self.properties = tuple(properties)
 
-    def execute(self, env, out):
+    def evaluate(self, env):
         data = env.data
         for prop in self.properties:
             if data is None:
@@ -196,9 +251,9 @@ class CallNode(ExprNode):
         self.name = name
         self.args = tuple(args)
 
-    def execute(self, env, out):
+    def evaluate(self, env):
         return env.fns[self.name](
-            *[arg.execute(env, out) for arg in self.args])
+            *[arg.evaluate(env) for arg in self.args])
 
     def children(self):
         return self.args
@@ -223,7 +278,7 @@ class StrLitNode(ExprNode):
             value = str(value)
         self.value = value
 
-    def execute(self, env, out):
+    def evaluate(self, env):
         return self.value
 
     def children(self):
@@ -246,9 +301,9 @@ class TemplateNode(Node):
         self.expr = expr
 
     def execute(self, env, out):
-        name = self.name.execute(env)
+        name = self.name.evaluate(env)
         if self.expr:
-            env = env.with_data(self.expr.execute(env, None))
+            env = env.with_data(self.expr.evaluate(env))
         env.templates[name].execute(env, out)
 
     def children(self):
@@ -263,6 +318,22 @@ class TemplateNode(Node):
         if len(children) == 2:
             expr = children[1]
         return TemplateNode(self.loc, name, expr)
+
+    def to_callee(self):
+        """
+        Satisfies the step value definition used by the trace analyzer.
+
+        Returns the template name.
+        """
+        # TODO: Enumerate possible values or error out if unanalyzable.
+        return self.name.evaluate(None)
+
+    def with_callee(self, callee):
+        return TemplateNode(
+            self.loc, StrLitNode(self.name.loc, repr(str(callee))), self.expr)
+
+    def reduce_traces(self, start_state, analyzer):
+        return analyzer.step(start_state, self, debug_hint=self.loc)
 
     def __str__(self):
         expr = self.expr
@@ -297,18 +368,18 @@ class _BlockNode(Node):
             else_clause = children[2]
         return type(self)(self.loc, expr, body, else_clause)
 
+    def block_type(self):
+        """
+        'if' for {{if}}...{{else}}...{{end}}.
+        """
+        raise NotImplementedError('abstract')
+
     def __str__(self):
         else_clause = self.else_clause
         if else_clause:
             return "{{%s %s}}%s{{else}}%s{{end}}" % (
                 self.block_type(), self.expr, self.body, else_clause)
         return "{{%s %s}}%s{{end}}" % (self.block_type(), self.expr, self.body)
-
-    def block_type(self):
-        """
-        'if' for {{if}}...{{else}}...{{end}}.
-        """
-        raise NotImplementedError('abstract')
 
 
 class WithNode(_BlockNode):
@@ -318,7 +389,7 @@ class WithNode(_BlockNode):
         _BlockNode.__init__(self, loc, expr, body, else_clause)
 
     def execute(self, env, out):
-        data = self.expr.execute(env, None)
+        data = self.expr.evaluate(env)
         if data:
             self.body.execute(env.with_data(data), out)
         elif self.else_clause:
@@ -326,6 +397,15 @@ class WithNode(_BlockNode):
 
     def block_type(self):
         return 'with'
+
+    def reduce_traces(self, start_state, analyzer):
+        with_end = self.body.reduce_traces(start_state, analyzer)
+        else_end = start_state
+        if self.else_clause:
+            else_end = self.else_clause.reduce_traces(start_state, analyzer)
+        return analyzer.join(
+            (with_end, else_end),
+            debug_hint='%s:%s' % (self.loc, self.block_type()))
 
 
 class IfNode(_BlockNode):
@@ -335,7 +415,7 @@ class IfNode(_BlockNode):
         _BlockNode.__init__(self, loc, expr, body, else_clause)
 
     def execute(self, env, out):
-        if self.expr.execute(env, None):
+        if self.expr.evaluate(env):
             self.body.execute(env, out)
         elif self.else_clause:
             self.else_clause.execute(env, out)
@@ -343,6 +423,14 @@ class IfNode(_BlockNode):
     def block_type(self):
         return 'if'
 
+    def reduce_traces(self, start_state, analyzer):
+        then_end = self.body.reduce_traces(start_state, analyzer)
+        else_end = start_state
+        if self.else_clause:
+            else_end = self.else_clause.reduce_traces(start_state, analyzer)
+        return analyzer.join(
+            (then_end, else_end),
+            debug_hint='%s:%s' % (self.loc, self.block_type()))
 
 class RangeNode(_BlockNode):
     """Loop."""
@@ -351,7 +439,7 @@ class RangeNode(_BlockNode):
         _BlockNode.__init__(self, loc, expr, body, else_clause)
 
     def execute(self, env, out):
-        iterable = self.expr.execute(env, None)
+        iterable = self.expr.evaluate(env)
         if iterable:
             for value in iterable:
                 self.body.execute(env.with_data(value), out)
@@ -360,6 +448,20 @@ class RangeNode(_BlockNode):
 
     def block_type(self):
         return 'range'
+
+    def reduce_traces(self, start_state, analyzer):
+        zero_end = start_state
+        if self.else_clause:
+            zero_end = self.else_clause.reduce_traces(start_state, analyzer)
+        once_end = self.body.reduce_traces(start_state, analyzer)
+        twice_end = self.body.reduce_traces(once_end, analyzer)
+        if once_end != twice_end:
+            return analyzer.no_steady_state(
+                (once_end, twice_end),
+                debug_hint='%s:%s' % (self.loc, self.block_type()))
+        return analyzer.join(
+            (zero_end, once_end),
+            debug_hint='%s:%s' % (self.loc, self.block_type()))
 
 
 class ListNode(Node):
@@ -378,6 +480,11 @@ class ListNode(Node):
 
     def with_children(self, children):
         return ListNode(self.loc, children)
+
+    def reduce_traces(self, start_state, analyzer):
+        for element in self.elements:
+            start_state = element.reduce_traces(start_state, analyzer)
+        return start_state
 
     def __str__(self):
         return ''.join([str(child) for child in self.elements])
@@ -403,7 +510,7 @@ def parse_templates(loc, code, name=None):
     # Code below ignores white-space at the start.
     code = code.rstrip()
 
-    env = Env(None, _BUILTINS, {})
+    env = Env(None, _BUILTIN_FNS, {})
 
     # Split src into a run of non-{{...}} tokens with
     # {{...}} constructs in-between.
@@ -432,7 +539,6 @@ def parse_templates(loc, code, name=None):
             toks.fail('expected {{define...}} not %s' % token)
         expr = _parse_expr(toks.loc_at(), token[len('{{define'):-2])
         toks.consume()
-        # TODO: error on {{definefoo}}
         name = expr.execute(Env(None, {}, {}))
         if name is None:
             toks.fail("expected name as quoted string, not %s" % expr)
@@ -545,8 +651,8 @@ def _parse_expr(loc, toks, consume_all=True):
                  # We parse all possible sequences starting with a quote so
                  # that quotes are not silently dropped, and enforce string
                  # well-formedness later.
-                 r'|\x27(?:[^\\\x27\n\r]|\\[\n\r])*\x27?'  # '...'
-                 r'|\x22(?:[^\\\x22\n\r]|\\[\n\r])*\x22?'),  # "..."
+                 r'|\x27(?:[^\\\x27\n\r]|\\[^\n\r])*\x27?'  # '...'
+                 r'|\x22(?:[^\\\x22\n\r]|\\[^\n\r])*\x22?'),  # "..."
                 toks))
     assert isinstance(toks, _ExprTokens)
     assert type(consume_all) is bool
@@ -608,7 +714,7 @@ def _parse_expr(loc, toks, consume_all=True):
         token = toks.peek()
         if token is None:
             toks.fail('missing function name at end of %s' % all_toks)
-        if not re.search(r'\A[A-Za-z][A-Za-z0-9]*\Z', token):
+        if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
             toks.fail('expected function name but got %s' % token)
         toks.consume()
         return token
@@ -733,7 +839,7 @@ class _ExprTokens(_Tokens):
     """
     A token queue suitable for parsing ExprNodes.
     """
-    
+
     def __init__(self, loc, tokens):
         _Tokens.__init__(self, loc, tokens)
 
@@ -741,29 +847,6 @@ class _ExprTokens(_Tokens):
         token = self.peek()
         if token is not None and not token.strip():
             return True
-
-
-def escape(env, name):
-    """
-    Renders the named template safe for evaluation.
-
-    This assumes env.templates[name] starts in an HTML text context.
-    """
-    assert name in env.templates
-    env.fns['html'] = escaping.escape_html
-
-    def esc(node):
-        if isinstance(node, InterpolationNode):
-            pipeline = Pipeline(node.expr)
-            ensure_pipeline_contains(pipeline, ('html',))
-            return node.with_children((pipeline.expr,))
-        elif isinstance(node, ExprNode):
-            return node
-        return node.with_children([esc(child) for child in node.children()])
-
-    env.templates[name] = esc(env.templates[name])
-
-    return env
 
 
 class Pipeline(object):
@@ -815,51 +898,6 @@ class Pipeline(object):
         if arg_index == index:  # Insertion at end.
             expr = CallNode(expr.loc, name, (expr,))
         self.expr = expr
-
-
-def ensure_pipeline_contains(pipeline, to_insert):
-    '''
-    ensures that an interpolated expression has calls to the functions named
-    in to_insert in order.
-    If the pipeline already has some of the named functions, do not interfere.
-    For example, if pipeline is (.X | html) and to_insert is
-    ["escape_js_val", "html"] then it
-    has one matching, "html", and one to insert, "escape_js_val", to produce
-    (.X | escapeJSVal | html).
-
-    pipeline - an object that supports element_at and insert_element_at methods
-               with the same semantics as Pipeline.
-    to_insert - the elements that the pipeline should contain in order.
-    '''
-
-    if not to_insert:
-        return
-
-    # Merge existing identifier commands with the sanitizers needed.
-    el_pos = 0
-    while True:
-        element = pipeline.element_at(el_pos)
-        if element is None:
-            break
-        for ti_pos in xrange(0, len(to_insert)):
-            if _esc_fns_eq(element, to_insert[ti_pos]):
-                for name in to_insert[:ti_pos]:
-                    pipeline.insert_element_at(el_pos, name)
-                    el_pos += 1
-                to_insert = to_insert[ti_pos+1:]
-                break
-        el_pos += 1
-    # Insert any remaining at the end.
-    for name in to_insert:
-        pipeline.insert_element_at(el_pos, name)
-        el_pos += 1
-
-
-def _esc_fns_eq(fn_name_a, fn_name_b):
-    """
-    Tests whether two escaping function names do the same work.
-    """
-    return fn_name_a == fn_name_b
 
 
 def _is_pipe(expr):

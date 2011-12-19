@@ -950,18 +950,19 @@ def escaping_mode_for_hole(context_before):
     Returns (context after, (escaping_modes...,))
     """
     context = context_before_dynamic_value(context_before)
-    esc_mode0 = escaping.ESC_MODE_FOR_STATE.get(state_of(context))
-    url_part = url_part_of(context)
-    if url_part == URL_PART_NONE:
-        esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
-        context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
-    elif url_part == URL_PART_PRE_QUERY:
-        esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
-        # TODO: CSS escaper when it's a CSS string literal.
-    elif url_part == URL_PART_QUERY_OR_FRAG:
-        esc_mode0 = escaping.ESC_MODE_ESCAPE_URL
-    else:
-        return STATE_ERROR  # Unknown URL part.
+    state, url_part = state_of(context), url_part_of(context)
+    esc_mode0 = escaping.ESC_MODE_FOR_STATE[state]
+    if state in (STATE_URL, STATE_CSS_URL, STATE_CSSDQ_URL, STATE_CSSSQ_URL):
+        if url_part == URL_PART_NONE:
+            esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
+            context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
+        elif url_part == URL_PART_PRE_QUERY:
+            esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
+            # TODO: CSS escaper when it's a CSS string literal.
+        elif url_part == URL_PART_QUERY_OR_FRAG:
+            esc_mode0 = escaping.ESC_MODE_ESCAPE_URL
+        else:
+            return STATE_ERROR  # Unknown URL part.
 
     if esc_mode0 is None:
         return STATE_ERROR
