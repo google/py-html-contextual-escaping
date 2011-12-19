@@ -375,7 +375,7 @@ def parse_templates(src, code, name=None):
         r'(\{\{(?:'
         r'[^\x22\x27\}]'
         r'|\x22(?:[^\\\x22]|\\.)*\x22'
-        r'|\x27(?:[^\\\x22]|\\.)*\x27'
+        r'|\x27(?:[^\\\x27]|\\.)*\x27'
         r')*\}\})', code)
 
     # For each token, the line on which it appears.
@@ -520,8 +520,8 @@ def _parse_expr(src, line, expr_text, consume_all=True):
         (r'[^\t\n\r \x27\x22()\|,]+'  # A run of non-breaking characters.
          r'|[\t\n\r ]+'  # Whitespace
          r'|[()\|,]'  # Punctuation
-         r'|\x27(?:[^\\\x27]|\\.)\x27'  # '...'
-         r'|\x22(?:[^\\\x22]|\\.)\x22'),  # "..."
+         r'|\x27(?:[^\\\x27]|\\.)*\x27?'  # '...'
+         r'|\x22(?:[^\\\x22]|\\.)*\x22?'),  # "..."
         expr_text)
 
     def skip_ignorable(epos):
@@ -573,6 +573,8 @@ def _parse_expr(src, line, expr_text, consume_all=True):
                 parts = ()
             return ReferenceNode(src, line_ref[0], parts), epos+1
         if ch0 in ('"', "'"):
+            if len(etoken) < 2 or etoken[-1] != ch0:
+                fail('malformed string literal %s' % etoken)
             return (StrLitNode(src, line_ref[0], unescape(etoken)),
                     epos+1)
         # Assume a function call.
