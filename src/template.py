@@ -271,7 +271,7 @@ class TemplateNode(Node):
             expr_str = " %s" % self.expr
         return "{{template %s%s}}" % (self.name, expr_str)
 
-class BlockNode(Node):
+class _BlockNode(Node):
     """
     An abstract statement node that has an expression, a body, and an optional
     else clause.
@@ -311,11 +311,11 @@ class BlockNode(Node):
         raise NotImplementedError('abstract')
 
 
-class WithNode(BlockNode):
+class WithNode(_BlockNode):
     """Executes body in a more specific data context."""
 
     def __init__(self, loc, expr, body, else_clause):
-        BlockNode.__init__(self, loc, expr, body, else_clause)
+        _BlockNode.__init__(self, loc, expr, body, else_clause)
 
     def execute(self, env, out):
         data = self.expr.execute(env, None)
@@ -328,11 +328,11 @@ class WithNode(BlockNode):
         return 'with'
 
 
-class IfNode(BlockNode):
+class IfNode(_BlockNode):
     """Conditional."""
 
     def __init__(self, loc, expr, body, else_clause):
-        BlockNode.__init__(self, loc, expr, body, else_clause)
+        _BlockNode.__init__(self, loc, expr, body, else_clause)
 
     def execute(self, env, out):
         if self.expr.execute(env, None):
@@ -344,11 +344,11 @@ class IfNode(BlockNode):
         return 'if'
 
 
-class RangeNode(BlockNode):
+class RangeNode(_BlockNode):
     """Loop."""
 
     def __init__(self, loc, expr, body, else_clause):
-        BlockNode.__init__(self, loc, expr, body, else_clause)
+        _BlockNode.__init__(self, loc, expr, body, else_clause)
 
     def execute(self, env, out):
         iterable = self.expr.execute(env, None)
@@ -399,122 +399,102 @@ def parse_templates(loc, code, name=None):
     # Normalize newlines.
     code = re.sub(r'\r\n?', '\n', code)
 
+    # White-space at the end is ignorable.
+    # Code below ignores white-space at the start.
+    code = code.rstrip()
+
     env = Env(None, _BUILTINS, {})
 
     # Split src into a run of non-{{...}} tokens with
     # {{...}} constructs in-between.
     # Inside a {{...}}, '}}' can appear inside a quoted string but not
     # elsewhere.  Quoted strings are \-escaped.
-    tokens = re.split(
-        r'(\{\{(?:'
-        r'[^\x22\x27\}]'
-        r'|\x22(?:[^\\\x22]|\\.)*\x22'
-        r'|\x27(?:[^\\\x27]|\\.)*\x27'
-        r')*\}\})', code)
+    toks = _Tokens(
+        loc,
+        [tok for tok in  # Avoid blank text nodes.
+         re.split(
+             r'(\{\{(?:'
+             r'[^\x22\x27\}]'
+             r'|\x22(?:[^\\\x22]|\\.)*\x22'
+             r'|\x27(?:[^\\\x27]|\\.)*\x27'
+             r')*\}\})', code)
+         if tok])
 
-    # For each token, the line on which it appears.
-    lines = []
-    line_sum = loc.line
-    for token in tokens:
-        lines.append(line_sum)
-        line_sum += len(token.split('\n')) - 1
-    # Put an entry at the end, so the list is indexable by end-of-input.
-    lines.append(line_sum)
-
-    # White-space at the end is ignorable.
-    # Loop below ignores white-space at the start.
-    while len(tokens) and not tokens[-1].strip():
-        tokens = tokens[:-1]
 
     # The inner functions below comprise a recursive descent parser for the
     # template grammar which updated env.templates in place.
-    # Functions take an index into the token stream and most return an
-    # index to the token after the last they consumed.
-    def loc_at(pos):
-        """
-        The location on which tokens[pos] occurs or the location of the end of
-        the input if pos is len(tokens).
-        """
-        return Loc(loc.src, lines[pos])
-    
-    def fail(pos, msg):
-        """Generate an exception with source and line info"""
-        raise Exception('%s: %s' % (loc_at(pos), msg))
-
-    def expect(pos, token):
-        """Advance one token if it matches or fail with an error message."""
-        if pos == len(tokens):
-            fail(pos, 'Expected %s at end of input' % token)
-        if tokens[pos] != token:
-            fail(pos, 'Expected %s, got %s' % (token, tokens[pos]))
-        return pos + 1
-
-    def parse_define(pos):
+    # Functions consume tokens so all operate on the queue defined above.
+    def parse_define():
         """Parses a {{{define}}}...{{end}} to update env.templates"""
-        token = tokens[pos]
-        expr = _parse_expr(loc_at(pos), token[len('{{define'):-2])
+        token = toks.peek()
+        if token is None or not re.search(
+            r'(?s)\A\{\{define\b.*\}\}\Z', token):
+            toks.fail('expected {{define...}} not %s' % token)
+        expr = _parse_expr(toks.loc_at(), token[len('{{define'):-2])
+        toks.consume()
         # TODO: error on {{definefoo}}
         name = expr.execute(Env(None, {}, {}))
         if name is None:
-            fail(pos, "expected name as quoted string, not %s" % expr)
-        pos = define(name, pos+1)
-        pos = expect(pos, '{{end}}')
-        return pos
+            toks.fail("expected name as quoted string, not %s" % expr)
+        define(name)
+        toks.expect('{{end}}')
 
-    def define(name, pos):
+    def define(name):
         """Updated env.templates[name] or fails with an informative error"""
-        body, pos = parse_list(pos)
         if name in env.templates:
-            fail(pos, 'Redefinition of %r' % name)
-        env.templates[name] = body
-        return pos
+            toks.fail('Redefinition of %r' % name)
+        env.templates[name] = parse_list()
 
-    def parse_list(pos):
+    def parse_list():
         """Parses a series of statement nodes."""
-        loc = loc_at(pos)
+        loc = toks.loc_at()
         children = []
-        while pos < len(tokens):
-            atom, pos = parse_atom(pos)
+        while True:
+            atom = parse_atom()
             if atom is None:
                 break
             children.append(atom)
         if len(children) == 1:
-            return children[0], pos
-        return ListNode(loc, children), pos
+            return children[0]
+        return ListNode(loc, children)
 
-    def parse_atom(pos):
+    def parse_atom():
         """Parses a single full statement node."""
-        if pos == len(tokens):
+        token = toks.peek()
+        if token is None:
             return None
-        loc = loc_at(pos)
-        token = tokens[pos]
+        loc = toks.loc_at()
         match = re.search(
-            r'^\{\{(?:(if|range|with|template|end|else)\b)?(.*)\}\}$', token)
+            r'\A\{\{(?:(if|range|with|template|end|else)\b)?(.*)\}\}\Z', token)
         if not match:
-            return TextNode(loc, token), pos+1
+            toks.consume()
+            return TextNode(loc, token)
         name = match.group(1)
+        if name in ('else', 'end'):
+            return None
+        toks.consume()
         if not name:
-            return InterpolationNode(loc, _parse_expr(loc, token[2:-2])), pos+1
-        if name in ('end', 'else'):
-            return None, pos
+            return InterpolationNode(loc, _parse_expr(loc, token[2:-2]))
         if name == 'template':
             name_and_data = match.group(2)
             template_name, name_and_data = _parse_expr(
                 loc, name_and_data, consume_all=False)
             expr = None
             if not name_and_data.is_empty():
-                # TODO: wrong line number if there are linebreaks in the name
-                # portion.
+                # Loc is now irrelevant since name_and_data is a token queue,
+                # so even if there are line-breaks in name, the error messages
+                # from parsing data will point to the right line.
                 expr = _parse_expr(loc, name_and_data)
-            return TemplateNode(loc, template_name, expr), pos+1
-        return parse_block(name, pos, _parse_expr(loc, match.group(2)))
+            return TemplateNode(loc, template_name, expr)
+        return parse_block(loc, name, _parse_expr(loc, match.group(2)))
 
-    def parse_block(name, pos, expr):
-        body, tpos = parse_list(pos+1)
+    def parse_block(loc, name, expr):
+        """Parses a _BlockNode, like {{if}}, {{with}}, etc."""
+        body = parse_list()
         else_clause = None
-        if tpos < len(tokens) and tokens[tpos] == '{{else}}':
-            else_clause, tpos = parse_list(tpos + 1)
-        tpos = expect(tpos, '{{end}}')
+        if toks.check('{{else}}'):
+            else_clause = parse_list()
+        toks.expect('{{end}}')
         if name == 'if':
             ctor = IfNode
         elif name == 'range':
@@ -522,24 +502,24 @@ def parse_templates(loc, code, name=None):
         else:
             assert name == 'with'
             ctor = WithNode
-        return ctor(loc_at(pos), expr, body, else_clause), tpos
+        return ctor(loc, expr, body, else_clause)
 
-    pos = 0  # Index into tokens array indicating unconsumed portion.
-    while pos < len(tokens):
-        token = tokens[pos]
+    while not toks.is_empty():
+        token = toks.peek()
         if not token.strip():
-            pos += 1
+            toks.consume()
             continue
         if token.startswith('{{define'):
-            pos = parse_define(pos)
+            parse_define()
         else:
-            break
-
-    if pos < len(tokens) and name is not None:
-        pos = define(name, pos)
-
-    if pos < len(tokens):
-        fail(pos, 'unparsed content %s' % ''.join(tokens[pos:]))
+            # A source file is zero or more {{define}}s
+            # optionally followed by zero or more statements that make up
+            # the body of the template with the given name.
+            # Fall through to parse the optional template body below.
+            if name is not None:
+                define(name)
+            if not toks.is_empty():
+                toks.fail('unparsed content %s' % toks)
 
     return env
 
@@ -628,7 +608,7 @@ def _parse_expr(loc, toks, consume_all=True):
         token = toks.peek()
         if token is None:
             toks.fail('missing function name at end of %s' % all_toks)
-        if not re.search(r'^[A-Za-z][A-Za-z0-9]*$', token):
+        if not re.search(r'\A[A-Za-z][A-Za-z0-9]*\Z', token):
             toks.fail('expected function name but got %s' % token)
         toks.consume()
         return token
@@ -675,10 +655,10 @@ class _Tokens(object):
     def is_ignorable(self):
         """
         True if the token at the front of the queue is ignorable.
-        The default implementation returns False for all tokens,
+        The default implementation returns False for non-empty tokens,
         but may be overridden.
         """
-        return False
+        return self.peek() == ''
 
     def skip_ignorable(self):
         """Consumes white-space tokens"""
@@ -746,7 +726,7 @@ class _Tokens(object):
         """
         The text of the unconsumed tokens.
         """
-        return ''.join(tokens)
+        return ''.join(self.tokens)
 
 
 class _ExprTokens(_Tokens):
