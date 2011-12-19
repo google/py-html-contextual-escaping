@@ -254,9 +254,17 @@ class TemplateNode(Node):
         return "{{template %s%s}}" % (self.name, expr_str)
 
 class BlockNode(Node):
-    def __init__(self, src, line, name, expr, body, else_clause):
+    """
+    An abstract statement node that has an expression, a body, and an optional
+    else clause.
+    """
+    
+    def __init__(self, src, line, node_type, expr, body, else_clause):
+        """
+        node_type - the node type.  'if' for {{if}}...{{else}}...{{end}}.
+        """
         Node.__init__(self, src, line)
-        self.name = name
+        self.node_type = node_type
         self.expr = expr
         self.body = body
         self.else_clause = else_clause
@@ -279,8 +287,8 @@ class BlockNode(Node):
         else_clause = self.else_clause
         if else_clause:
             return "{{%s %s}}%s{{else}}%s{{end}}" % (
-                self.name, self.expr, self.body, else_clause)
-        return "{{%s %s}}%s{{end}}" % (self.name, self.expr, self.body)
+                self.node_type, self.expr, self.body, else_clause)
+        return "{{%s %s}}%s{{end}}" % (self.node_type, self.expr, self.body)
 
 
 class WithNode(BlockNode):
@@ -708,7 +716,8 @@ def ensure_pipeline_contains(pipeline, to_insert):
     el_pos = 0
     while True:
         element = pipeline.element_at(el_pos)
-        if element is None: break
+        if element is None:
+            break
         print '\telement=%s' % element
         for ti_pos in xrange(0, len(to_insert)):
             if _esc_fns_eq(element, to_insert[ti_pos]):
