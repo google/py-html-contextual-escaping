@@ -1216,7 +1216,7 @@ class ContextUpdateTest(unittest.TestCase):
                 env = template.escape(env, 'main')
                 got = env.with_data(data).sexecute('main')
             except Exception:
-                print sys.stderr, '\n%s\n' % test_input
+                print >> sys.stderr, '\n%s\n' % test_input
                 raise
             if want != got:
                 self.fail("%s: escaped output: want\n\t%r\ngot\n\t%r"
@@ -1583,7 +1583,11 @@ class ContextUpdateTest(unittest.TestCase):
         for test_input, want, ids in tests:
             env = template.parse_templates('test', test_input, 'name')
             tmpl = env.templates['name']
-            pipe = template.Pipeline(tmpl.expr)
+            try:
+                pipe = template.Pipeline(tmpl.expr)
+            except:
+                print >> sys.stderr, test_input
+                raise
 
             template.ensure_pipeline_contains(pipe, ids)
             got = str(tmpl.with_children((pipe.expr,)))
