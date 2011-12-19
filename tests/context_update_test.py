@@ -1541,42 +1541,42 @@ class ContextUpdateTest(unittest.TestCase):
         tests = (
         (
             "{{.X}}",
-            "[(command: [F=[X]])]",
+            "{{.X}}",
             (),
         ),
         (
             "{{.X | html}}",
-            "[(command: [F=[X]]) (command: [I=html])]",
+            "{{.X | html}}",
             (),
         ),
         (
             "{{.X}}",
-            "[(command: [F=[X]]) (command: [I=html])]",
+            "{{.X | html}}",
             ["html"],
         ),
         (
             "{{.X | html}}",
-            "[(command: [F=[X]]) (command: [I=html]) (command: [I=urlquery])]",
+            "{{.X | html | urlquery}}",
             ["urlquery"],
         ),
         (
             "{{.X | html | urlquery}}",
-            "[(command: [F=[X]]) (command: [I=html]) (command: [I=urlquery])]",
+            "{{.X | html | urlquery}}",
             ["urlquery"],
         ),
         (
             "{{.X | html | urlquery}}",
-            "[(command: [F=[X]]) (command: [I=html]) (command: [I=urlquery])]",
+            "{{.X | html | urlquery}}",
             ["html", "urlquery"],
         ),
         (
             "{{.X | html | urlquery}}",
-            "[(command: [F=[X]]) (command: [I=html]) (command: [I=urlquery])]",
+            "{{.X | html | urlquery}}",
             ["html"],
         ),
         (
             "{{.X | urlquery}}",
-            "[(command: [F=[X]]) (command: [I=html]) (command: [I=urlquery])]",
+            "{{.X | html | urlquery}}",
             ["html", "urlquery"],
         ),
         (
@@ -1586,10 +1586,12 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         )
         for test_input, want, ids in tests:
-            action = Action(test_input)
-            pipe = action.Pipe
-            ensure_pipeline_contains(pipe, ids)
-            got = str(pipe)
+            env = template.parse_templates('test', test_input, 'name')
+            tmpl = env.templates['name']
+            pipe = template.Pipeline(tmpl.expr)
+
+            template.ensure_pipeline_contains(pipe, ids)
+            got = str(tmpl.with_children((pipe.expr,)))
             if got != want:
                 self.fail("%s, %r: want\n\t%s\ngot\n\t%s"
                           % (test_input, ids, want, got))

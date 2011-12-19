@@ -244,7 +244,7 @@ class TemplateNode(Node):
         expr = None
         if len(children) == 2:
             expr = children[1]
-        return TemplateNode(self.src, self.line, self.name.clone(), expr)
+        return TemplateNode(self.src, self.line, name, expr)
 
     def __str__(self):
         expr = self.expr
@@ -373,7 +373,6 @@ def parse_templates(src, code, name=None):
     # For each token, the line on which it appears.
     lines = []
     line = 0
-    print repr(tokens)
     for token in tokens:
         lines.append(line)
         line += len(token.split('\n')) - 1
@@ -386,7 +385,9 @@ def parse_templates(src, code, name=None):
         tokens = tokens[:-1]
 
     # The inner functions below comprise a recursive descent parser for the
-    # template grammar.
+    # template grammar which updated env.templates in place.
+    # Functions take an index into the token stream and most return an
+    # index to the token after the last they consumed.
     def fail(pos, msg):
         """Generate an exception with source and line info"""
         raise Exception('%s:%s: %s' % (src, lines[pos], msg))
@@ -523,15 +524,10 @@ def parse_templates(src, code, name=None):
         def parse_pipeline(epos):
             expr, epos = parse_atom(epos)
             epos = skip_ignorable(epos)
-            print 'etokens=%r, epos=%d' % (etokens, epos)
             while epos < len(etokens) and etokens[epos] == '|':
                 right, epos = parse_name(epos+1)
-                print 'parsed right %s at %d' % (right, epos)
                 expr = CallNode(src, expr.line, right, (expr,))
-                print 'pre skip %d' % (epos)
                 epos = skip_ignorable(epos)  # Consume name and space.
-                print 'post skip %d' % epos
-            print 'returning %s, %s' % (expr, epos)
             return expr, epos
 
         def parse_atom(epos):
@@ -541,8 +537,15 @@ def parse_templates(src, code, name=None):
             etoken = etokens[epos]
             ch0 = etoken[0]
             if ch0 == '.':  # Reference
-                return (ReferenceNode(src, line_ref[0], etoken[1].split('.')),
-                        epos+1)
+                if etoken != '.':
+                    # .Foo.Bar -> ['Foo', 'Bar'] so we can lookup data elements
+                    # in order.
+                    parts = etoken[1:].split('.')
+                else:
+                    # . means all data, so use () because following zero key
+                    # traversals leaves from data leaves us in the right place.
+                    parts = ()
+                return ReferenceNode(src, line_ref[0], parts), epos+1
             if ch0 in ('"', "'"):
                 return (StrLitNode(src, line_ref[0], unescape(etoken)),
                         epos+1)
@@ -610,7 +613,11 @@ def parse_templates(src, code, name=None):
 
 
 def escape(env, name):
-    """Renders the named template safe for evaluation."""
+    """
+    Renders the named template safe for evaluation.
+
+    This assumes env.templates[name] starts in an HTML text context.
+    """
     assert name in env.templates
     env.fns['html'] = escaping.escape_html
 
@@ -625,3 +632,112 @@ def escape(env, name):
     env.templates[name] = esc(env.templates[name])
     
     return env
+
+
+class Pipeline(object):
+    """
+    A wrapper that allows convenient manipulation of chained function calls.
+    """
+
+    def __init__(self, expr):
+        self.expr = expr
+
+    def element_at(self, index):
+        """
+        A function that takes an index and returns the name of the
+        pipeline element at that index or None if out of bounds.
+
+        When .|a|b is b(a(.)), element_at(0) is 'a', and element_at(1) is 'b'.
+        """
+        result = [None]
+        def walk(expr):
+            if not _is_pipe(expr):
+                return 0
+            arg_index = walk(expr.args[0])
+            if arg_index == index:
+                result[0] = expr.name
+            return arg_index+1
+        walk(self.expr)
+        return result[0]
+
+    def insert_element_at(self, index, name):
+        """
+        takes an index and a pipeline element to insert.
+        After this call, element_at(index) == name.
+
+        When .|a|b|c is c(b(a(.)))
+        # insert_element_at(1, foo) should produce
+        # .|a|foo|b which is c(b(foo(a(.))))
+        """
+        def walk(expr):
+            if not _is_pipe(expr):
+                return 0, expr
+            arg = expr.args[0]
+            arg_index, new_arg = walk(arg)
+            if arg_index == index:
+                new_arg = CallNode(new_arg.src, new_arg.line, name, (new_arg,))
+            if arg is not new_arg:
+                expr = expr.with_children((new_arg),)
+            return arg_index+1, expr
+        arg_index, expr = walk(self.expr)
+        if arg_index == index:  # Insertion at end.
+            expr = CallNode(expr.src, expr.line, name, (expr,))
+        self.expr = expr
+
+
+def ensure_pipeline_contains(pipeline, to_insert):
+    '''
+    ensures that an interpolated expression has calls to the functions named
+    in to_insert in order.
+    If the pipeline already has some of the named functions, do not interfere.
+    For example, if pipeline is (.X | html) and to_insert is
+    ["escape_js_val", "html"] then it
+    has one matching, "html", and one to insert, "escape_js_val", to produce
+    (.X | escapeJSVal | html).
+
+    pipeline - an object that supports element_at and insert_element_at methods
+               with the same semantics as Pipeline.
+    to_insert - the elements that the pipeline should contain in order.
+    '''
+
+    if not to_insert:
+        return
+
+    print "Inserting %r into (%s)" % (to_insert, pipeline.expr)
+    # Merge existing identifier commands with the sanitizers needed.
+    el_pos = 0
+    while True:
+        element = pipeline.element_at(el_pos)
+        if element is None: break
+        print '\telement=%s' % element
+        for ti_pos in xrange(0, len(to_insert)):
+            if _esc_fns_eq(element, to_insert[ti_pos]):
+                print '\tfound at %d' % ti_pos
+                for name in to_insert[:ti_pos]:
+                    pipeline.insert_element_at(el_pos, name)
+                    el_pos += 1
+                to_insert = to_insert[ti_pos+1:]
+                break
+        el_pos += 1
+    # Insert any remaining at the end.
+    for name in to_insert:
+        print '\tremaining=%r' % name
+        pipeline.insert_element_at(el_pos, name)
+        el_pos += 1
+
+
+def _esc_fns_eq(fn_name_a, fn_name_b):
+    """
+    Tests whether two escaping function names do the same work.
+    """
+    return fn_name_a == fn_name_b
+
+
+def _is_pipe(expr):
+    """
+    True if expr is a call with a single argument.
+
+    Since template syntax allows f(x) to be written x | f, single argument
+    functions are called pipeline elements.
+    """
+    return isinstance(expr, CallNode) and len(expr.args) == 1
