@@ -1216,7 +1216,7 @@ class ContextUpdateTest(unittest.TestCase):
                 env = template.escape(env, 'main')
                 got = env.with_data(data).sexecute('main')
             except Exception:
-                print >>sys.stderr, '\n%s\n' % test_input
+                print sys.stderr, '\n%s\n' % test_input
                 raise
             if want != got:
                 self.fail("%s: escaped output: want\n\t%r\ngot\n\t%r"
