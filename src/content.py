@@ -35,7 +35,7 @@ class TypedContent(object):
         if type(content) not in (unicode, str):
             content = str(content)
         if type(kind) is not int:
-            raise Exception(kind)
+            raise ValueError(kind)
         self.content = content
         self.kind = kind
 
