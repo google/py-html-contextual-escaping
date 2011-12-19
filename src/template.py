@@ -580,7 +580,7 @@ def _parse_expr(src, line, expr_text, consume_all=True):
         name, epos = parse_name(epos)
         epos = skip_ignorable(epos)
         epos = expect(epos, '(')
-        epos = skip_ignorable(epos + 1)
+        epos = skip_ignorable(epos)
         args = []
         if epos < len(etokens) and etokens[epos] != ')':
             while True:
@@ -637,8 +637,9 @@ def escape(env, name):
 
     def esc(node):
         if isinstance(node, InterpolationNode):
-            return node.with_children(
-                (CallNode(node.src, node.line, 'html', (node.expr,)),))
+            pipeline = Pipeline(node.expr)
+            ensure_pipeline_contains(pipeline, ('html',))
+            return node.with_children((pipeline.expr,))
         elif isinstance(node, ExprNode):
             return node
         return node.with_children([esc(child) for child in node.children()])

@@ -8,6 +8,7 @@ import context_update
 import debug
 import template
 import unittest
+import sys
 
 class WidgyMarshaler(object):
     """A JSON Marshaller that contains widgy data"""
@@ -591,18 +592,8 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "overescaping2",
-            "Hello, {{html .C}}!",
+            "Hello, {{html(.C)}}!",
             "Hello, &lt;Cincinatti&gt;!",
-        ),
-        (
-            "overescaping3",
-            "{{with .C}}{{$msg := .}}Hello, {{$msg}}!{{end}}",
-            "Hello, &lt;Cincinatti&gt;!",
-        ),
-        (
-            "assignment",
-            "{{if $x := .H}}{{$x}}{{end}}",
-            "&lt;Hello&gt;",
         ),
         (
             "withBody",
@@ -627,11 +618,11 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "nonStringValue",
             "{{.T}}",
-            "true",
+            "True",
         ),
         (
             "constant",
-            r"""<a href="/search?q={{"'a<b'"}}">""",
+            "<a href=\"/search?q={{\"'a<b'\"}}\">",
             '<a href="/search?q=%27a%3cb%27">',
         ),
         (
@@ -1220,9 +1211,13 @@ class ContextUpdateTest(unittest.TestCase):
         )
 
         for name, test_input, want in tests:
-            env = template.parse_templates('test', test_input, 'main')
-            env = template.escape(env, 'main')
-            got = env.with_data(data).sexecute('main')
+            try:
+                env = template.parse_templates('test', test_input, 'main')
+                env = template.escape(env, 'main')
+                got = env.with_data(data).sexecute('main')
+            except Exception:
+                print >>sys.stderr, '\n%s\n' % test_input
+                raise
             if want != got:
                 self.fail("%s: escaped output: want\n\t%r\ngot\n\t%r"
                           % (name, want, got))
