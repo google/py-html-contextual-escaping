@@ -258,7 +258,7 @@ class BlockNode(Node):
     An abstract statement node that has an expression, a body, and an optional
     else clause.
     """
-    
+
     def __init__(self, src, line, node_type, expr, body, else_clause):
         """
         node_type - the node type.  'if' for {{if}}...{{else}}...{{end}}.
@@ -411,7 +411,7 @@ def parse_templates(src, code, name=None):
     def parse_define(pos):
         """Parses a {{{define}}}...{{end}} to update env.templates"""
         token = tokens[pos]
-        expr = parse_expr(pos, token[len('{{define'):-2])
+        expr = _parse_expr(src, lines[pos], token[len('{{define'):-2])
         # TODO: error on {{definefoo}}
         name = expr.execute(Env(None, {}, {}))
         if name is None:
@@ -445,28 +445,29 @@ def parse_templates(src, code, name=None):
         """Parses a single full statement node."""
         if pos == len(tokens):
             return None
+        line = lines[pos]
         token = tokens[pos]
         match = re.search(
             r'^\{\{(?:(if|range|with|template|end|else)\b)?(.*)\}\}$', token)
         if not match:
-            return TextNode(src, lines[pos], token), pos+1
+            return TextNode(src, line, token), pos+1
         name = match.group(1)
         if not name:
             return InterpolationNode(
-                src, lines[pos], parse_expr(pos, token[2:-2])), pos+1
+                src, line, _parse_expr(src, line, token[2:-2])), pos+1
         if name in ('end', 'else'):
             return None, pos
         if name == 'template':
             name_and_data = match.group(2)
-            template_name, name_and_data = parse_expr_prefix(
-                lines[pos], name_and_data)
+            template_name, name_and_data = _parse_expr(
+                src, line, name_and_data, consume_all=False)
             expr = None
             if name_and_data.strip():
                 # TODO: wrong line number if there are linebreaks in the name
                 # portion.
-                expr = parse_expr(pos, name_and_data)
-            return TemplateNode(src, lines[pos], template_name, expr), pos+1
-        return parse_block(name, pos, parse_expr(pos, match.group(2)))
+                expr = _parse_expr(src, line, name_and_data)
+            return TemplateNode(src, line, template_name, expr), pos+1
+        return parse_block(name, pos, _parse_expr(src, line, match.group(2)))
 
     def parse_block(name, pos, expr):
         body, tpos = parse_list(pos+1)
@@ -483,123 +484,6 @@ def parse_templates(src, code, name=None):
             ctor = WithNode
         return ctor(src, lines[pos], expr, body, else_clause), tpos
 
-    def parse_expr(pos, expr_text):
-        """Parse an expression"""
-        expr, remainder = parse_expr_prefix(lines[pos], expr_text)
-        if remainder:
-            fail(pos, 'Trailing content in expression: %s^%s'
-                 % (expr_text[:-len(remainder)], remainder))
-        return expr
-
-    def parse_expr_prefix(line, expr_text):
-        """
-        Parse an expression from the front of the given text returning
-        it and the remaining text.
-        """
-       
-        line_ref = [line]
-        etokens = re.findall(
-            (r'[^\t\n\r \x27\x22()\|,]+'  # A run of non-breaking characters.
-             r'|[\t\n\r ]+'  # Whitespace
-             r'|[()\|,]'  # Punctuation
-             r'|\x27(?:[^\\\x27]|\\.)\x27'  # '...'
-             r'|\x22(?:[^\\\x22]|\\.)\x22'),  # "..."
-            expr_text)
-
-        def skip_ignorable(epos):
-            """Consumes white-space tokens"""
-            while epos < len(etokens) and not etokens[epos].strip():
-                line_ref[0] += len(etokens[epos].split('\n')) - 1
-                epos += 1
-            return epos
-
-        def fail(msg):
-            raise Exception('%s:%s: %s' % (src, line_ref[0], msg))
-
-        def expect(epos, token):
-            """Advance one token if it matches or fail with an error message."""
-            if epos == len(etokens):
-                fail('Expected %s at end of input' % token)
-            if tokens[epos] != token:
-                fail('Expected %s, got %s' % (token, tokens[epos]))
-            return epos + 1
-
-        # There are two precedence levels.
-        # highest - string literals, references, calls
-        # lowest  - pipelines
-        epos = 0
-
-        def parse_pipeline(epos):
-            expr, epos = parse_atom(epos)
-            epos = skip_ignorable(epos)
-            while epos < len(etokens) and etokens[epos] == '|':
-                right, epos = parse_name(epos+1)
-                expr = CallNode(src, expr.line, right, (expr,))
-                epos = skip_ignorable(epos)  # Consume name and space.
-            return expr, epos
-
-        def parse_atom(epos):
-            epos = skip_ignorable(epos)
-            if epos == len(etokens):
-                fail('missing expression part at end of %s' % expr_text)
-            etoken = etokens[epos]
-            ch0 = etoken[0]
-            if ch0 == '.':  # Reference
-                if etoken != '.':
-                    # .Foo.Bar -> ['Foo', 'Bar'] so we can lookup data elements
-                    # in order.
-                    parts = etoken[1:].split('.')
-                else:
-                    # . means all data, so use () because following zero key
-                    # traversals leaves from data leaves us in the right place.
-                    parts = ()
-                return ReferenceNode(src, line_ref[0], parts), epos+1
-            if ch0 in ('"', "'"):
-                return (StrLitNode(src, line_ref[0], unescape(etoken)),
-                        epos+1)
-            # Assume a function call.
-            line = line_ref[0]
-            name, epos = parse_name(epos)
-            epos = skip_ignorable(epos)
-            epos = expect(epos, '(')
-            epos = skip_ignorable(epos + 1)
-            args = []
-            if epos < len(etokens) and etokens[epos] != ')':
-                while True:
-                    arg, epos = parse_pipeline(epos)
-                    args.append(arg)
-                    epos = skip_ignorable(epos)
-                    if epos == len(etokens) or etokens[epos] != ',':
-                        break
-                    epos += 1
-            epos = expect(epos, ')')
-            return CallNode(src, line, name, args), epos
-
-        def parse_name(epos):
-            """
-            Returns the value of the identifier token at etokens[epos] and
-            the position after the identifier or fails with a useful
-            error message.
-            """
-            epos = skip_ignorable(epos)
-            if epos == len(etokens):
-                fail('missing function name at end of %s' % expr_text)
-            etok = etokens[epos]
-            if not re.search(r'^[A-Za-z][A-Za-z0-9]*$', etok):
-                fail('expected function name but got %s' % etok)
-            return etok, epos+1
-
-        def unescape(str_lit):
-            """ r'foo\bar' -> 'foo\bar' """
-            try:
-                return str_lit[1:-1].decode('string_escape')
-            except:
-                fail('invalid string literal %s' % str_lit)
-
-        expr, epos = parse_pipeline(epos)
-        epos = skip_ignorable(epos)
-        return expr, ''.join(etokens[epos:])
-        
     pos = 0  # Index into tokens array indicating unconsumed portion.
     while pos < len(tokens):
         token = tokens[pos]
@@ -620,6 +504,128 @@ def parse_templates(src, code, name=None):
     return env
 
 
+def _parse_expr(src, line, expr_text, consume_all=True):
+    """
+    Parse an expression from the front of the given text.
+
+    If consume_all is true (the default), then the expression must
+    be the only thing in expr_text, and only the expression is returned.
+
+    Otherwise, the expression and the unparsed portion of expr_text are
+    returned as a tuple.
+    """
+
+    line_ref = [line]
+    etokens = re.findall(
+        (r'[^\t\n\r \x27\x22()\|,]+'  # A run of non-breaking characters.
+         r'|[\t\n\r ]+'  # Whitespace
+         r'|[()\|,]'  # Punctuation
+         r'|\x27(?:[^\\\x27]|\\.)\x27'  # '...'
+         r'|\x22(?:[^\\\x22]|\\.)\x22'),  # "..."
+        expr_text)
+
+    def skip_ignorable(epos):
+        """Consumes white-space tokens"""
+        while epos < len(etokens) and not etokens[epos].strip():
+            line_ref[0] += len(etokens[epos].split('\n')) - 1
+            epos += 1
+        return epos
+
+    def fail(msg):
+        raise Exception('%s:%s: %s' % (src, line_ref[0], msg))
+
+    def expect(epos, token):
+        """Advance one token if it matches or fail with an error message."""
+        if epos == len(etokens):
+            fail('Expected %s at end of input' % token)
+        if etokens[epos] != token:
+            fail('Expected %s, got %s' % (token, etokens[epos]))
+        return epos + 1
+
+    # There are two precedence levels.
+    # highest - string literals, references, calls
+    # lowest  - pipelines
+    epos = 0
+
+    def parse_pipeline(epos):
+        expr, epos = parse_atom(epos)
+        epos = skip_ignorable(epos)
+        while epos < len(etokens) and etokens[epos] == '|':
+            right, epos = parse_name(epos+1)
+            expr = CallNode(src, expr.line, right, (expr,))
+            epos = skip_ignorable(epos)  # Consume name and space.
+        return expr, epos
+
+    def parse_atom(epos):
+        epos = skip_ignorable(epos)
+        if epos == len(etokens):
+            fail('missing expression part at end of %s' % expr_text)
+        etoken = etokens[epos]
+        ch0 = etoken[0]
+        if ch0 == '.':  # Reference
+            if etoken != '.':
+                # .Foo.Bar -> ['Foo', 'Bar'] so we can lookup data elements
+                # in order.
+                parts = etoken[1:].split('.')
+            else:
+                # . means all data, so use () because following zero key
+                # traversals leaves from data leaves us in the right place.
+                parts = ()
+            return ReferenceNode(src, line_ref[0], parts), epos+1
+        if ch0 in ('"', "'"):
+            return (StrLitNode(src, line_ref[0], unescape(etoken)),
+                    epos+1)
+        # Assume a function call.
+        line = line_ref[0]
+        name, epos = parse_name(epos)
+        epos = skip_ignorable(epos)
+        epos = expect(epos, '(')
+        epos = skip_ignorable(epos + 1)
+        args = []
+        if epos < len(etokens) and etokens[epos] != ')':
+            while True:
+                arg, epos = parse_pipeline(epos)
+                args.append(arg)
+                epos = skip_ignorable(epos)
+                if epos == len(etokens) or etokens[epos] != ',':
+                    break
+                epos += 1
+        epos = expect(epos, ')')
+        return CallNode(src, line, name, args), epos
+
+    def parse_name(epos):
+        """
+        Returns the value of the identifier token at etokens[epos] and
+        the position after the identifier or fails with a useful
+        error message.
+        """
+        epos = skip_ignorable(epos)
+        if epos == len(etokens):
+            fail('missing function name at end of %s' % expr_text)
+        etok = etokens[epos]
+        if not re.search(r'^[A-Za-z][A-Za-z0-9]*$', etok):
+            fail('expected function name but got %s' % etok)
+        return etok, epos+1
+
+    def unescape(str_lit):
+        """ r'foo\bar' -> 'foo\bar' """
+        try:
+            # See http://docs.python.org/library/codecs.html
+            return str_lit[1:-1].decode('string_escape')
+        except ValueError:
+            fail('invalid string literal %s' % str_lit)
+
+    expr, epos = parse_pipeline(epos)
+    epos = skip_ignorable(epos)
+    remainder = ''.join(etokens[epos:])
+    if consume_all:
+        if remainder:
+            fail('Trailing content in expression: %s^%s'
+                 % (expr_text[:-len(remainder)], remainder))
+        return expr
+    return expr, remainder
+
+
 def escape(env, name):
     """
     Renders the named template safe for evaluation.
@@ -638,7 +644,7 @@ def escape(env, name):
         return node.with_children([esc(child) for child in node.children()])
 
     env.templates[name] = esc(env.templates[name])
-    
+
     return env
 
 
@@ -685,7 +691,7 @@ class Pipeline(object):
             if arg_index == index:
                 new_arg = CallNode(new_arg.src, new_arg.line, name, (new_arg,))
             if arg is not new_arg:
-                expr = expr.with_children((new_arg),)
+                expr = expr.with_children((new_arg,))
             return arg_index+1, expr
         arg_index, expr = walk(self.expr)
         if arg_index == index:  # Insertion at end.
@@ -711,17 +717,14 @@ def ensure_pipeline_contains(pipeline, to_insert):
     if not to_insert:
         return
 
-    print "Inserting %r into (%s)" % (to_insert, pipeline.expr)
     # Merge existing identifier commands with the sanitizers needed.
     el_pos = 0
     while True:
         element = pipeline.element_at(el_pos)
         if element is None:
             break
-        print '\telement=%s' % element
         for ti_pos in xrange(0, len(to_insert)):
             if _esc_fns_eq(element, to_insert[ti_pos]):
-                print '\tfound at %d' % ti_pos
                 for name in to_insert[:ti_pos]:
                     pipeline.insert_element_at(el_pos, name)
                     el_pos += 1
@@ -730,7 +733,6 @@ def ensure_pipeline_contains(pipeline, to_insert):
         el_pos += 1
     # Insert any remaining at the end.
     for name in to_insert:
-        print '\tremaining=%r' % name
         pipeline.insert_element_at(el_pos, name)
         el_pos += 1
 
