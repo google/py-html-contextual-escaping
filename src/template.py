@@ -331,8 +331,9 @@ class TemplateNode(Node):
         return self.name.evaluate(None)
 
     def with_callee(self, callee):
+        assert type(callee) is str
         return TemplateNode(
-            self.loc, LiteralNode(self.name.loc, repr(str(callee))), self.expr)
+            self.loc, LiteralNode(self.name.loc, callee), self.expr)
 
     def reduce_traces(self, start_state, analyzer):
         return analyzer.step(start_state, self, debug_hint=self.loc)
