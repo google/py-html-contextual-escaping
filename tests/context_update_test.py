@@ -15,21 +15,21 @@ class WidgyMarshaler(object):
     """A JSON Marshaller that contains widgy data"""
     def to_json(self):
         """Satisfies the interface expected by escape_js_value."""
-        return { "foo": "\u2028--></script>" }
+        return { "foo": u"\u2028--></script>" }
 
 
 class BadMarshaler(object):
     """A JSON Marshaller that fails to marshal"""
     def to_json(self):
         """Satisfies the interface expected by escape_js_value."""
-        raise Exception("Cannot marshal")
+        raise RuntimeError("Cannot marshal")
 
 
 class GoodMarshaler(object):
     """A JSON Marshaller containing innocuous data."""
     def to_json(self):
         """Satisfies the interface expected by escape_js_value."""
-        return { "foo": "bar", "baz": ["boo", 42, "far", None, 0.0 / 0.0] }
+        return { "foo": "bar", "baz": ["boo", 42, "far", None, float("nan")] }
 
 
 class ContextUpdateTest(unittest.TestCase):
@@ -696,7 +696,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "jsStrValue",
             "<button onclick='alert({{.H}})'>",
-            r"""<button onclick='alert(&#34;\u003cHello\u003e&#34;)'>""",
+            r"""<button onclick='alert(&#34;\x3cHello\x3e&#34;)'>""",
         ),
         (
             "jsNumericValue",
@@ -717,18 +717,18 @@ class ContextUpdateTest(unittest.TestCase):
             "jsObjValue",
             "<button onclick='alert({{.A}})'>",
             (r"<button onclick='alert("
-             r"[&#34;\u003ca\u003e&#34;,&#34;\u003cb\u003e&#34;])'>"),
+             r"[&#34;\x3ca\x3e&#34;,&#34;\x3cb\x3e&#34;])'>"),
         ),
         (
             "jsObjValueScript",
             "<script>alert({{.A}})</script>",
-            r"""<script>alert(["\u003ca\u003e","\u003cb\u003e"])</script>""",
+            r"""<script>alert(["\x3ca\x3e","\x3cb\x3e"])</script>""",
         ),
         (
             "jsObjValueNotOverEscaped",
-            "<button onclick='alert({{.A | html}})'>",
+            "<button onclick='alert({{.A | escape_html}})'>",
             (r"<button onclick='alert("
-             r"[&#34;\u003ca\u003e&#34;,&#34;\u003cb\u003e&#34;])'>"),
+             r"[&#34;\x3ca\x3e&#34;,&#34;\x3cb\x3e&#34;])'>"),
         ),
         (
             "jsStr",
@@ -738,25 +738,28 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "badMarshaller",
             "<button onclick='alert(1/{{.B}}in numbers)'>",
-            ("<button onclick='alert(1/"
-             " /* Exception : cannot marshal TODO */null in numbers)'>"),
+            ("<button onclick='alert(1/ null in numbers)'>"),
         ),
         (
             "widgyMarshaller",
             "<button onclick='alert(1/{{.Q}}in numbers)'>",
-            "<button onclick='alert(1/ {TODO} in numbers)'>",
+            (r"<button onclick='alert(1/"
+             r"({&#34;foo&#34;:&#34;\u2028--\x3e\x3c/script\x3e&#34;})"
+             r"in numbers)'>"),
         ),
         (
             "jsMarshaller",
             "<button onclick='alert({{.M}})'>",
             ("<button onclick='alert("
-             "{&#34;&lt;foo&gt;&#34;:&#34;O&#39;Reilly&#34;})'>"),
+             "({&#34;foo&#34;:&#34;bar&#34;,"
+             "&#34;baz&#34;:[&#34;boo&#34;,42,&#34;far&#34;,null,NaN]})"
+             ")'>"),
         ),
         (
             "jsStrNotUnderEscaped",
-            "<button onclick='alert({{.C | urlquery}})'>",
+            "<button onclick='alert({{.C | escape_url}})'>",
             # URL escaped, then quoted for JS.
-            r"""<button onclick='alert(&#34;%3CCincinatti%3E&#34;)'>""",
+            r"""<button onclick='alert(&#34;%3cCincinatti%3e&#34;)'>""",
         ),
         (
             "jsRe",
