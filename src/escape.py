@@ -114,7 +114,7 @@ class _Analyzer(trace_analysis.Analyzer):
             callee = step_value.to_callee()
             if callee is not None:
                 end_ctx = self.external_call(callee, start_state, debug_hint)
-                self.calls[step_value] = end_ctx
+                self.calls[step_value] = start_state
                 return end_ctx
         return start_state
 
@@ -202,6 +202,7 @@ class _Analyzer(trace_analysis.Analyzer):
         _copyinto(self.templates, analyzer.templates)
         _copyinto(self.called, analyzer.called)
         _copyinto(self.interps, analyzer.interps)
+        _copyinto(self.calls, analyzer.calls)
         _copyinto(self.warnings, analyzer.warnings)
         self.templates[key] = (body, end_ctx)
         return end_ctx, None
@@ -228,7 +229,7 @@ class _Analyzer(trace_analysis.Analyzer):
             if contextualized_name is None:
                 base_contextualized_name = '%s$%s' % (
                     tmpl_name,
-                    debug.context_to_string(start_ctx).replace(' ', '_'))
+                    debug.context_to_string(start_ctx).replace(' ', ','))
                 contextualized_name = base_contextualized_name
                 counter = 0
                 # ensure uniqueness by looking into name_to_body
@@ -268,8 +269,8 @@ class _Analyzer(trace_analysis.Analyzer):
             return node
 
         for ((tmpl_name, start_ctx), (body, _)) in self.templates.iteritems():
-            self.name_to_body[contextualize_name(tmpl_name, start_ctx)] = (
-                rewrite_node(body))
+            contextualized_name = contextualize_name(tmpl_name, start_ctx)
+            self.name_to_body[contextualized_name] = rewrite_node(body)
 
 
 def ensure_pipeline_contains(pipeline, to_insert):
