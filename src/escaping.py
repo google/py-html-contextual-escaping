@@ -79,9 +79,8 @@ ESC_MODE_ESCAPE_URL = 11
 # digits.
 ESC_MODE_NORMALIZE_URL = 12
 
-# Like ESC_MODE_NORMALIZE_URL, but filters out schemes like "javascript:"
-# that load code.
-ESC_MODE_FILTER_NORMALIZE_URL = 13
+# Filters out URL schemes like "javascript:" that load code.
+ESC_MODE_FILTER_URL = 13
 
 # The explicit rejection of escaping.
 ESC_MODE_NO_AUTOESCAPE = 14
@@ -110,8 +109,7 @@ CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_STRING] = (
     content.CONTENT_KIND_JS_STR_CHARS)
 CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_NORMALIZE_URL] = content.CONTENT_KIND_URL
 CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_ESCAPE_URL] = content.CONTENT_KIND_URL
-CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_FILTER_NORMALIZE_URL] = (
-    content.CONTENT_KIND_URL)
+CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_FILTER_URL] = content.CONTENT_KIND_URL
 
 ESC_MODE_FOR_STATE = [None for _ in xrange(0, context.COUNT_OF_STATES)]
 ESC_MODE_FOR_STATE[context.STATE_TEXT] = ESC_MODE_ESCAPE_HTML
@@ -458,7 +456,7 @@ def normalize_url(value):
     return _NOT_URL_UNRESERVED_AND_SPECIAL.sub(_pct_encode, value)
 
 
-def filter_normalize_url(value):
+def filter_url(value):
     """
     Vets a URL's protocol and removes rough edges from a URL by escaping
     any raw HTML/JS string delimiters.
@@ -473,9 +471,9 @@ def filter_normalize_url(value):
         value = ""
     elif type(value) not in (str, unicode):
         value = str(value)
-    if not _FILTER_FOR_FILTER_NORMALIZE_URL.match(value):
+    if not _FILTER_FOR_FILTER_URL.match(value):
         return "#zSafehtmlz"
-    return normalize_url(value)
+    return value
 
 
 def elide(value):
@@ -592,7 +590,9 @@ def _replacer_for_js(match):
         _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX[group] = encoded
     return encoded
 
-_ESCAPE_MAP_FOR_ESCAPE_CSS_STRING = {}
+_ESCAPE_MAP_FOR_ESCAPE_CSS_STRING = {
+    '\\': r'\\',
+    }
 
 def _replacer_for_css(match):
     """A regexp replacer."""
@@ -623,7 +623,7 @@ _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&-*\/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
 
-_FILTER_FOR_FILTER_NORMALIZE_URL = re.compile(
+_FILTER_FOR_FILTER_URL = re.compile(
     r'(?i)^(?:(?:https?|mailto):|[^&:\/?#]*(?:[\/?#]|$))')
 
 _FILTER_FOR_FILTER_HTML_ATTRIBUTE = re.compile(
@@ -693,5 +693,5 @@ SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_CSS_STRING ] = escape_css_string
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_CSS_VALUE ] = filter_css_value
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_URL ] = escape_url
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_NORMALIZE_URL ] = normalize_url
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_NORMALIZE_URL ] = filter_normalize_url
+SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_URL ] = filter_url
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ELIDE ] = elide
