@@ -325,7 +325,7 @@ def _copyinto(dest, src):
             dest[key] = value
     elif type(dest) is set:
         for value in src:
-            dest.add(src)
+            dest.add(value)
     else:
         dest.extend(list(src))
 
