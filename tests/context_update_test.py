@@ -773,7 +773,7 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "jsReAmbigOk",
-            '<script>{{if true}}var x = 1{{end}}</script>',
+            '<script>{{if True}}var x = 1{{end}}</script>',
             # The {if} ends in an ambiguous jsCtx but there is
             # no slash following so we shouldn't care.
             '<script>var x = 1</script>',
@@ -1214,24 +1214,28 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         )
 
+        failures = []
+
         for name, test_input, want in tests:
+            env = None
             try:
                 env = template.parse_templates('test', test_input, 'main')
-                print 'Before %s' % env.templates['main']
                 escape.escape(env.templates, ('main',))
-                print 'After %s' % env.templates['main']
                 got = env.with_data(data).sexecute('main')
             except Exception:
                 print >> sys.stderr, '\n%s\n' % test_input
+                if env is not None:
+                    print >>sys.stderr, str(env)
                 raise
             if want != got:
-                self.fail("%s: escaped output: want\n\t%r\ngot\n\t%r"
-                          % (name, want, got))
+                failures.append(
+                    "%s: escaped output: want\n\t%r\ngot\n\t%r"
+                    % (name, want, got))
+        if failures:
+            fail('\n\n'.join(failures))
 
 
     def test_escape_set(self):
-        if True:  # TODO: disable
-            return
         data = {
             "Children": [
                 {"X": "foo"},
@@ -1365,8 +1369,13 @@ class ContextUpdateTest(unittest.TestCase):
             source = ""
             for name, body in test_input.iteritems():
                 source = "%s{{define %s}}%s{{end}} " % (source, name, body)
-            env = template.parse_templates('test', source)
-            got = env.with_data(data).execute("main")
+            try:
+                env = template.parse_templates('test', source)
+                escape.escape(env.templates, ('main',))
+                got = env.with_data(data).sexecute('main')
+            except:
+                print >> sys.stderr, repr(source)
+                raise
 
             if want != got:
                 self.fail("want\n\t%r\ngot\n\t%r" % (want, got))
@@ -1523,10 +1532,10 @@ class ContextUpdateTest(unittest.TestCase):
         for test_input, want in tests:
             got = None
             try:
-                env = template.parse_templates('t', test_input, 't')
-                env = escape.escape(env.templates, ('main',))
-            except Exception as errmessage:
-                got = errmessage
+                env = template.parse_templates('test', test_input, 't')
+                env = escape.escape(env.templates, ('t',))
+            except Exception, err:
+                got = str(err)
             if want is None:
                 if got is not None:
                     self.fail("input=%r: unexpected error %r" % (input, got))
@@ -1537,7 +1546,7 @@ class ContextUpdateTest(unittest.TestCase):
                      "\t%r\n"
                      "does not contain expected string\n"
                      "\t%r")
-                    % (input, got, want))
+                    % (test_input, got, want))
 
 
     def test_ensure_pipeline_contains(self):
