@@ -966,10 +966,10 @@ def escaping_mode_for_hole(context_before):
         elif url_part == URL_PART_QUERY_OR_FRAG:
             esc_mode0 = escaping.ESC_MODE_ESCAPE_URL
         else:
-            return STATE_ERROR  # Unknown URL part.
+            return STATE_ERROR, ()  # Unknown URL part.
 
     if esc_mode0 is None:
-        return STATE_ERROR
+        return STATE_ERROR, ()
 
     esc_mode1 = None
     delim_type = delim_type_of(context)
