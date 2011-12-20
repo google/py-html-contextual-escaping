@@ -541,8 +541,6 @@ def parse_templates(loc, code, name=None):
             toks.fail('expected {{define...}} not %s' % token)
         name = _require_name(toks, token[len('{{define'):-2].strip())
         toks.consume()
-        if name is None:
-            toks.fail("expected name as quoted string, not %s" % expr)
         define(name)
         toks.expect('{{end}}')
 
@@ -665,12 +663,19 @@ def _parse_expr(loc, toks, consume_all=True):
     # lowest  - pipelines
 
     def parse_pipeline():
+        """
+        Parses the lowest precedence production (atom '|' atom '|' | ...).
+        """
         expr = parse_atom()
         while toks.check('|'):
             expr = CallNode(expr.loc, parse_name(), (expr,))
         return expr
 
     def parse_atom():
+        """
+        Parses function calls, literals, and references which do not nest
+        except inside parentheses so which are all equally high precedence.
+        """
         toks.skip_ignorable()
         token = toks.peek()
         if token is None:
@@ -943,7 +948,7 @@ _NUMBER = re.compile(
 
 def _require_name(toks, token):
     if token is None:
-        toks.fail('missing function name at end of %s' % all_toks)
+        toks.fail('missing function name at end of input')
     if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
         toks.fail('expected function name but got %s' % token)
     return token

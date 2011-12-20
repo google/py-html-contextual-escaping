@@ -603,7 +603,7 @@ _TRANSITIONS[ STATE_RCDATA ] = (
     )
 _TRANSITIONS[ STATE_HTML_BEFORE_TAG_NAME ] = (
     _ToTransition( r"""^[A-Za-z]+""", STATE_TAG_NAME ),
-    _ToTransition( r"""^(?=[^A-Za-z])""", STATE_TEXT ),
+    _ToState( r"""^(?![A-Za-z])""", STATE_TEXT ),
     )
 _TRANSITIONS[ STATE_TAG_NAME ] = (
     _TransitionToSelf( r"""^[A-Za-z0-9:-]*(?:[A-Za-z0-9]|$)""" ),
@@ -619,7 +619,7 @@ _TRANSITIONS[ STATE_TAG ] = (
     _TransitionToSelf( r"""^\s+$""" ),
     )
 _TRANSITIONS[ STATE_ATTR_NAME ] = (
-    _TransitionToSelf( r"""[\w-]+""" ),  # TODO: What does \w mean in python?
+    _TransitionToSelf( r"""[A-Za-z0-9-]+""" ),
     # For a value-less attribute, make an epsilon transition back to the tag
     # body context to look for a tag end or another attribute name.
     _TransitionToState( r"""^""", STATE_AFTER_NAME ),
@@ -640,7 +640,7 @@ _TRANSITIONS[ STATE_BEFORE_VALUE ] = (
     #    <input value=>
     # and the second handles the blank value in:
     #    <input value= name=foo>
-    _TransitionBackToTag( r"""^(?=>|\s+[\w-]+\s*=)""" ),
+    _TransitionBackToTag( r"""^(?=>|\s+[A-Za-z][A-Za-z0-9-]*\s*=)""" ),
     _TransitionToSelf( r"""^\s+""" ),
     )
 _TRANSITIONS[ STATE_HTMLCMT ] = (
@@ -654,9 +654,8 @@ _TRANSITIONS[ STATE_ATTR ] = (
 # http://www.w3.org/TR/css3-syntax/#lexical
 _TRANSITIONS[ STATE_CSS ] = (
     _TransitionToState( r"""\/\*""", STATE_CSSBLOCK_CMT ),
+    # Non-standard but widely supported.
     _TransitionToState( r"""\/\/""", STATE_CSSLINE_CMT ),
-    # TODO: Do we need to support non-standard but widely supported C++
-    # style comments?
     _TransitionToState( r"""[\"]""", STATE_CSSDQ_STR ),
     _TransitionToState( r"""\'""", STATE_CSSSQ_STR ),
     _CssUriTransition( r"""(?i)\burl\s*\(\s*([\"\']?)""" ),

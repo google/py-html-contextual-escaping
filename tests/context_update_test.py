@@ -1225,14 +1225,14 @@ class ContextUpdateTest(unittest.TestCase):
             except Exception:
                 print >> sys.stderr, '\n%s\n' % test_input
                 if env is not None:
-                    print >>sys.stderr, str(env)
+                    print >> sys.stderr, str(env)
                 raise
             if want != got:
                 failures.append(
                     "%s: escaped output: want\n\t%r\ngot\n\t%r"
                     % (name, want, got))
         if failures:
-            fail('\n\n'.join(failures))
+            self.fail('\n\n'.join(failures))
 
 
     def test_escape_set(self):
@@ -1359,18 +1359,15 @@ class ContextUpdateTest(unittest.TestCase):
         #    },
         )
 
-        # pred is a template function that returns the predecessor of a
-        # natural number for testing recursive templates.
-        fns = {
-            "pred": lambda x: x - 1
-            }
-
         for test_input, want in tests:
             source = ""
             for name, body in test_input.iteritems():
                 source = "%s{{define %s}}%s{{end}} " % (source, name, body)
             try:
                 env = template.parse_templates('test', source)
+                # pred is a template function that returns the predecessor of a
+                # natural number for testing recursive templates.
+                env.fns['pred'] = lambda x: x - 1
                 escape.escape(env.templates, ('main',))
                 got = env.with_data(data).sexecute('main')
             except:
@@ -1638,7 +1635,7 @@ class ContextUpdateTest(unittest.TestCase):
                 f1 = func_map[n1]
                 for _, test_input in inputs:
                     want = f0(test_input)
-                    igot = f1(want)
+                    got = f1(want)
                     if want != got:
                         self.fail(
                             "%s %s with %T %r: want\n\t%r,\ngot\n\t%r"

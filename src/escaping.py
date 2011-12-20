@@ -317,7 +317,7 @@ def _marshal_json_obj(obj):
     if hasattr(obj, 'to_json'):
         try:
             return obj.to_json()
-        except StandardError, Warning:
+        except (StandardError, Warning):
             pass
     return None
 
@@ -550,11 +550,11 @@ def _replacer_for_js(match):
     encoded = _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX.get(group)
     if encoded is None:
         # "\u2028" -> "\\u2028"
-        ch = ord(group)
-        if ch < 0x100:
-            encoded = r'\x%02x' % ch
+        char_code = ord(group)
+        if char_code < 0x100:
+            encoded = r'\x%02x' % char_code
         else:
-            encoded = r'\u%04x' % ch
+            encoded = r'\u%04x' % char_code
         _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX[group] = encoded
     return encoded
 
