@@ -308,6 +308,8 @@ def _esc_fns_eq(fn_name_a, fn_name_b):
     """
     Tests whether two escaping function names do the same work.
     """
+    fn_name_a = _CANON_NAMES.get(fn_name_a, fn_name_a)
+    fn_name_b = _CANON_NAMES.get(fn_name_b, fn_name_b)
     return fn_name_a == fn_name_b
 
 
@@ -326,3 +328,8 @@ def _copyinto(dest, src):
             dest.add(src)
     else:
         dest.extend(list(src))
+
+
+_CANON_NAMES = {
+    'escape_html_attribute': 'escape_html',
+    }
