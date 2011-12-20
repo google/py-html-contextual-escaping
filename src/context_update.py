@@ -605,6 +605,7 @@ _TRANSITIONS[STATE_TEXT] = (
     )
 _TRANSITIONS[ STATE_RCDATA ] = (
     _RcdataEndTagTransition( r"""</(\w+)\b""" ),
+    _NormalizeTransition( _TransitionToSelf( r"""<""" ), "&lt;" ),
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[ STATE_HTML_BEFORE_TAG_NAME ] = (
@@ -834,7 +835,7 @@ def _process_next_token(text, context):
     """
 
     if is_error_context(context):  # The ERROR state is infectious.
-        return (len(text), context)
+        return (len(text), context, text)
 
     # Find the transition whose pattern matches earliest
     # in the raw text.
