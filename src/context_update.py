@@ -483,16 +483,20 @@ class _URLPartTransition(_Transition):
     def compute_next_context(self, prior, match):
         url_part = url_part_of(prior)
         if url_part == URL_PART_NONE:
-            url_part = URL_PART_PRE_QUERY
+            text = match.string[:match.end()].strip()
+            if text:
+                # There is a non-space character preceding.
+                url_part = URL_PART_PRE_QUERY
 
         if (url_part != URL_PART_QUERY_OR_FRAG
             # Matches '?', '#', or an encoded form thereof.
-            and match.group(0)):
+            and match.group(1)):
             url_part = URL_PART_QUERY_OR_FRAG
         return (prior & ~URL_PART_ALL) | url_part
 
-_URL_PART_TRANSITION = _URLPartTransition(r'[?#]|$')
-_CSSURL_PART_TRANSITION = _URLPartTransition(r'[?#]|\\(?:23|3[fF]|[?#])|$')
+_URL_PART_TRANSITION = _URLPartTransition(r'([?#])|$')
+_CSSURL_PART_TRANSITION = _URLPartTransition(
+    r'([?#]|\\(?:23|3[fF]|[?#]))|$')
 
 
 class _EndTagTransition(_Transition):
@@ -957,7 +961,7 @@ def escaping_mode_for_hole(context_before):
             esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
             context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
         elif url_part == URL_PART_PRE_QUERY:
-            esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
+            esc_mode0 = escaping.ESC_MODE_NORMALIZE_URL
             # TODO: CSS escaper when it's a CSS string literal.
         elif url_part == URL_PART_QUERY_OR_FRAG:
             esc_mode0 = escaping.ESC_MODE_ESCAPE_URL
