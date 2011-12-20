@@ -263,6 +263,13 @@ class _Transition(object):
         """
         raise NotImplementedError('abstract')
 
+    def raw_text(self, match):
+        """
+        Called to normalize the matched text.
+        """
+        assert self
+        return match.group(0)
+
 class _ToTransition(_Transition):
     """
     A transition to a given context.
@@ -288,6 +295,21 @@ class _ToTagTransition(_Transition):
 
     def compute_next_context(self, prior, match):
         return STATE_TAG | self.el_type
+
+class _NormalizeTransition(_Transition):
+    """
+    A transition that replaces the matched text with alternate text.
+    """
+
+    def __init__(self, regex, repl):
+        _Transition.__init__(self, regex)
+        self.repl = repl
+
+    def compute_next_context(self, prior, match):
+        return prior
+
+    def raw_text(self, match):
+        return self.repl
 
 _TAG_DONE_ELEMENT_TO_PARTIAL_CONTEXT = {
     ELEMENT_NONE: STATE_TEXT,
@@ -595,6 +617,7 @@ _TRANSITIONS[STATE_TEXT] = (
                       ELEMENT_TEXTAREA ),
     _ToTagTransition( r"""(?i)<title(?=[\s>\/]|$)""", ELEMENT_TITLE ),
     _ToTagTransition( r"""(?i)<xmp(?=[\s>\/]|$)""", ELEMENT_XMP ),
+    _NormalizeTransition( r"""<(?!/?[A-Za-z]|!DOCTYPE)""", "&lt;" ),
     _ToTransition( r"""<""", STATE_HTML_BEFORE_TAG_NAME ),
     )
 _TRANSITIONS[ STATE_RCDATA ] = (
@@ -603,7 +626,7 @@ _TRANSITIONS[ STATE_RCDATA ] = (
     )
 _TRANSITIONS[ STATE_HTML_BEFORE_TAG_NAME ] = (
     _ToTransition( r"""^[A-Za-z]+""", STATE_TAG_NAME ),
-    _ToState( r"""^(?![A-Za-z])""", STATE_TEXT ),
+    _ToTransition( r"""^(?=[^A-Za-z])""", STATE_TEXT ),
     )
 _TRANSITIONS[ STATE_TAG_NAME ] = (
     _TransitionToSelf( r"""^[A-Za-z0-9:-]*(?:[A-Za-z0-9]|$)""" ),

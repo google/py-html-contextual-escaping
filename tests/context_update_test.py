@@ -160,6 +160,11 @@ class ContextUpdateTest(unittest.TestCase):
             | context.URL_PART_PRE_QUERY,
         ),
         (
+            '<a href="/search?q=',
+            context.STATE_URL | context.DELIM_DOUBLE_QUOTE
+            | context.URL_PART_QUERY_OR_FRAG,
+        ),
+        (
             '<img alt="1">',
             context.STATE_TEXT,
         ),
@@ -1214,6 +1219,8 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         )
 
+        report_all = False
+
         failures = []
 
         for name, test_input, want in tests:
@@ -1223,14 +1230,19 @@ class ContextUpdateTest(unittest.TestCase):
                 escape.escape(env.templates, ('main',))
                 got = env.with_data(data).sexecute('main')
             except Exception:
-                print >> sys.stderr, '\n%s\n' % test_input
+                print >> sys.stderr, '\ntest_escape %s:\n%s\n' % (
+                    name, test_input)
                 if env is not None:
                     print >> sys.stderr, str(env)
                 raise
             if want != got:
-                failures.append(
-                    "%s: escaped output: want\n\t%r\ngot\n\t%r"
+                msg = ("%s: escaped output: want\n\t%r\ngot\n\t%r"
                     % (name, want, got))
+                if report_all:
+                    failures.append(msg)
+                else:
+                    msg = '%s\n\tenv=%s' % (msg, env)
+                    self.fail(msg)
         if failures:
             self.fail('\n\n'.join(failures))
 
@@ -1537,7 +1549,7 @@ class ContextUpdateTest(unittest.TestCase):
                 if got is not None:
                     self.fail("input=%r: unexpected error %r" % (input, got))
                 continue
-            if got.find(want) == -1:
+            if got is None or got.find(want) == -1:
                 self.fail(
                     ("input=%r: error\n"
                      "\t%r\n"

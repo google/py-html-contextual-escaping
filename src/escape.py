@@ -96,7 +96,13 @@ class _Analyzer(trace_analysis.Analyzer):
         if hasattr(step_value, 'to_raw_content'):
             raw_content = step_value.to_raw_content()
             if raw_content is not None:
-                return context_update.process_raw_text(raw_content, start_state)
+                end_state = context_update.process_raw_text(
+                    raw_content, start_state)
+                if (context.is_error_context(end_state)
+                    and not context.is_error_context(start_state)):
+                    self.warn('bad content in %s: `%s`' % (
+                        debug.context_to_string(start_state), raw_content))
+                return end_state
         if hasattr(step_value, 'to_pipeline'):
             pipeline = step_value.to_pipeline()
             if pipeline is not None:
