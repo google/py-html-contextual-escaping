@@ -977,37 +977,35 @@ def escaping_mode_for_hole(context_before):
     """
     context = context_before_dynamic_value(context_before)
     state, url_part = state_of(context), url_part_of(context)
-    esc_mode0 = escaping.ESC_MODE_FOR_STATE[state]
-    if state in (STATE_URL, STATE_CSS_URL, STATE_CSSDQ_URL, STATE_CSSSQ_URL):
-        if url_part == URL_PART_NONE:
-            esc_mode0 = escaping.ESC_MODE_FILTER_NORMALIZE_URL
+    esc_modes = [escaping.ESC_MODE_FOR_STATE[state]]
+    if url_part == URL_PART_NONE:
+        if state in (
+            STATE_URL, STATE_CSS_URL, STATE_CSSDQ_URL, STATE_CSSSQ_URL):
+            esc_modes = [escaping.ESC_MODE_FILTER_URL,
+                         escaping.ESC_MODE_NORMALIZE_URL]
             context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
-        elif url_part == URL_PART_PRE_QUERY:
-            esc_mode0 = escaping.ESC_MODE_NORMALIZE_URL
-            # TODO: CSS escaper when it's a CSS string literal.
-        elif url_part == URL_PART_QUERY_OR_FRAG:
-            esc_mode0 = escaping.ESC_MODE_ESCAPE_URL
-        else:
-            return STATE_ERROR, ()  # Unknown URL part.
+        elif state in (STATE_CSSDQ_STR, STATE_CSSSQ_STR):
+            esc_modes[:0] = [escaping.ESC_MODE_FILTER_URL]
+            context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
+    elif url_part == URL_PART_PRE_QUERY:
+        if state not in (STATE_CSSDQ_STR, STATE_CSSSQ_STR):
+            esc_modes[0] = escaping.ESC_MODE_NORMALIZE_URL
+    elif url_part == URL_PART_QUERY_OR_FRAG:
+        esc_modes[0] = escaping.ESC_MODE_ESCAPE_URL
 
-    if esc_mode0 is None:
-        return STATE_ERROR, ()
-
-    esc_mode1 = None
+    esc_mode = esc_modes[-1]
     delim_type = delim_type_of(context)
     if delim_type != DELIM_NONE:
         # Figure out how to escape the attribute value.
-        if esc_mode0 == escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE:
+        if esc_mode == escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE:
             if delim_type == DELIM_SPACE_OR_TAG_END:
-                esc_mode0 = escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE
-        elif (esc_mode0 not in (escaping.ESC_MODE_ESCAPE_HTML,
-                                escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE)
-              and esc_mode0 not in escaping.HTML_EMBEDDABLE_ESC_MODES):
+                esc_modes[-1] = escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE
+        elif (esc_mode not in (escaping.ESC_MODE_ESCAPE_HTML,
+                               escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE)
+              and esc_mode not in escaping.HTML_EMBEDDABLE_ESC_MODES):
             if delim_type == DELIM_SPACE_OR_TAG_END:
-                esc_mode1 = escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE
+                esc_modes.append(
+                    escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE)
             else:
-                esc_mode1 = escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE
-    if esc_mode1 is not None:
-        return context, (esc_mode0, esc_mode1)
-    else:
-        return context, (esc_mode0,)
+                esc_modes.append(escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE)
+    return context, tuple(esc_modes)
