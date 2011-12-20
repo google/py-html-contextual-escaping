@@ -301,6 +301,18 @@ def escape_js_string(value):
     return _escape_js_string_helper(value)
 
 
+def _marshal_json_obj(obj):
+    """
+    Marshals a JSON object by looking for a to_json method.
+    """
+    if hasattr(obj, 'to_json'):
+        try:
+            return obj.to_json()
+        except StandardError, Warning:
+            pass
+    return None
+
+
 def escape_js_value(value):
     """
     Encodes a value as a JavaScript literal.
@@ -317,7 +329,8 @@ def escape_js_value(value):
         check_circular=True,  # Don't allow denial of service via cyclic vals.
         allow_nan=True,  # NaN is ok in JS.
         indent=None,
-        default=lambda obj: obj.to_json())
+        default=_marshal_json_obj,
+        separators=(',', ':'))
     # Could provide default(obj) to convert user-defined classes to dicts.
 
     if not len(escaped):  # Paranoia.
@@ -327,14 +340,16 @@ def escape_js_value(value):
         # There is a higher risk that {...} will be interpreted as a block than
         # that the parentheses will introduce a function call.
         escaped = '(%s)' % escaped
-    elif char0 != '[':
+    elif char0 not in '["':
         # "true" -> " true "
         # We surround values with spaces so that they can't be interpolated into
         # identifiers by accident.
         # We could use parentheses but those might be interpreted as a function
         # call.
         escaped = ' %s ' % escaped
-    return escaped
+    # Prevent string content from being interpreted as containing HTML token
+    # boundaries.
+    return escaped.replace('<', r'\x3c').replace('>', r'\x3e')
 
 
 def escape_js_regex(value):
@@ -515,7 +530,11 @@ def _replacer_for_js(match):
     encoded = _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX.get(group)
     if encoded is None:
         # "\u2028" -> "\\u2028"
-        encoded = r'\u%04x' % ord(group)
+        ch = ord(group)
+        if ch < 0x100:
+            encoded = r'\x%02x' % ch
+        else:
+            encoded = r'\u%04x' % ch
         _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX[group] = encoded
     return encoded
 
