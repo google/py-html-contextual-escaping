@@ -299,6 +299,19 @@ def ensure_pipeline_contains(pipeline, to_insert):
     if not to_insert:
         return
 
+    el_pos = 0
+    while True:
+        element = pipeline.element_at(el_pos)
+        if element is None:
+            break
+        if element == 'noescape':
+            # Don't interfere if there is a pipeline element noescape.
+            # TODO: Maybe move this convention into the templating language.
+            # The templating language just ignores pipeline changes if there is
+            # an element named 'noescape' or whatever flavor it chooses.
+            return
+        el_pos += 1
+
     # Merge existing identifier commands with the sanitizers needed.
     el_pos = 0
     while True:
