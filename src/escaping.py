@@ -515,7 +515,41 @@ def filter_css_value(value):
         value = ""
     elif type(value) not in (str, unicode):
         value = str(value)
-    return _filter_css_value_helper(value)
+
+    decoded = _CSS_ESC.sub(_css_decode_one, value)
+
+    # CSS3 error handling is specified as honoring string boundaries per
+    # http://www.w3.org/TR/css3-syntax/#error-handling :
+    #     Malformed declarations. User agents must handle unexpected
+    #     tokens encountered while parsing a declaration by reading until
+    #     the end of the declaration, while observing the rules for
+    #     matching pairs of (), [], {}, "", and '', and correctly handling
+    #     escapes. For example, a malformed declaration may be missing a
+    #     property, colon (:) or value.
+    # So we need to make sure that values do not have mismatched bracket
+    # or quote characters to prevent the browser from restarting parsing
+    # inside a string that might embed JavaScript source.
+    if not _CSS_VALUE_DISALLOWED.search(decoded):
+        id_chars = _NOT_ALPHANUMERIC.sub('', decoded).lower()
+        if not _CSS_IDENT_DISALLOWED.search(id_chars):
+            return decoded
+    return 'zSafehtmlz'
+
+_CSS_VALUE_DISALLOWED = re.compile(r'[\0"\'()/;@\[\\\]`{}<]|--')
+
+_CSS_IDENT_DISALLOWED = re.compile(r'(?i)\A(?:expression|(moz)?binding)')
+
+_NOT_ALPHANUMERIC = re.compile(r'[^A-Za-z0-9]+')
+
+_CSS_ESC = re.compile(r'\\([0-9A-Fa-f]+)[\t\n\f\r ]?')
+
+
+def _css_decode_one(match):
+    """
+    r'\a' -> '\n'.
+    Expects hex digits in group 1 as per _CSS_ESC.
+    """
+    return unichr(int(match.group(1), 16))
 
 
 _ESCAPE_MAP_FOR_HTML = {
@@ -589,12 +623,6 @@ _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&-*\/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
 
-_FILTER_FOR_FILTER_CSS_VALUE = re.compile(
-    r'(?i)^(?!-*(?:expression|(?:moz-)?binding))'
-    r'(?:[.#]?-?(?:[_a-z0-9][_a-z0-9-]*)'
-    r'(?:-[_a-z][_a-z0-9-]*)*-?|-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9])'
-    r'(?:[a-z]{1,2}|%)?|!important|)$')
-
 _FILTER_FOR_FILTER_NORMALIZE_URL = re.compile(
     r'(?i)^(?:(?:https?|mailto):|[^&:\/?#]*(?:[\/?#]|$))')
 
@@ -632,12 +660,6 @@ def _escape_js_regex_helper(value):
 def _escape_css_string_helper(value):
     """ '</style>' -> '\3c \2f style\3e ' """
     return _MATCHER_FOR_ESCAPE_CSS_STRING.sub(_replacer_for_css, value)
-
-def _filter_css_value_helper(value):
-    """ Blocks certain kinds of CSS token boundaries. """
-    if _FILTER_FOR_FILTER_CSS_VALUE.search(value):
-        return value
-    return "zSafehtmlz"
 
 def _filter_html_attribute_helper(value):
     """ Whitelists attribute name=value pairs. """
