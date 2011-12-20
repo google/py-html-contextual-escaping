@@ -37,527 +37,579 @@ class ContextUpdateTest(unittest.TestCase):
         """
         Tests the content propagation algorithm.
         """
-        tests = ((
-            "",
-            0,
-        ),
-        (
-            'Hello, World!',
-            0,
-        ),
-        (
-            # An orphaned "<" is OK.
-            'I <3 Ponies!',
-            0,
-        ),
-        (
-            '<a',
-            context.STATE_TAG_NAME,
-        ),
-        (
-            '<a ',
-            context.STATE_TAG,
-        ),
-        (
-            '<a>',
-            context.STATE_TEXT,
-        ),
-        (
-            '<a href',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a on',
-            context.STATE_ATTR_NAME | context.ATTR_SCRIPT,
-        ),
-        (
-            '<a href ',
-            context.STATE_AFTER_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a style  =  ',
-            context.STATE_BEFORE_VALUE | context.ATTR_STYLE,
-        ),
-        (
-            '<a href=',
-            context.STATE_BEFORE_VALUE | context.ATTR_URL,
-        ),
-        (
-            '<a href=x',
-            context.STATE_URL | context.DELIM_SPACE_OR_TAG_END
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a href=x ',
-            context.STATE_TAG,
-        ),
-        (
-            '<a href=>',
-            context.STATE_TEXT,
-        ),
-        (
-            '<a href=x>',
-            context.STATE_TEXT,
-        ),
-        (
-            "<a href ='",
-            context.STATE_URL | context.DELIM_SINGLE_QUOTE,
-        ),
-        (
-            r"""<a href=''""",
-            context.STATE_TAG,
-        ),
-        (
-            '<a href= "',
-            context.STATE_URL | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a href=""',
-            context.STATE_TAG,
-        ),
-        (
-            '<a title="',
-            context.STATE_ATTR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            "<a HREF='http:",
-            context.STATE_URL | context.DELIM_SINGLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            r"""<a Href='/""",
-            context.STATE_URL | context.DELIM_SINGLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            "<a href='\"",
-            context.STATE_URL | context.DELIM_SINGLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a href="\'',
-            context.STATE_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            "<a href='&apos;",
-            context.STATE_URL | context.DELIM_SINGLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a href="&quot;',
-            context.STATE_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a href="&#34;',
-            context.STATE_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a href=&quot;',
-            context.STATE_URL | context.DELIM_SPACE_OR_TAG_END
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a href="/search?q=',
-            context.STATE_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_QUERY_OR_FRAG,
-        ),
-        (
-            '<img alt="1">',
-            context.STATE_TEXT,
-        ),
-        (
-            '<img alt="1>"',
-            context.STATE_TAG,
-        ),
-        (
-            '<img alt="1>">',
-            context.STATE_TEXT,
-        ),
-        (
-            '<input checked type="checkbox"',
-            context.STATE_TAG,
-        ),
-        (
-            '<a onclick="',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            '<a onclick="//foo',
-            context.STATE_JSLINE_CMT | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            "<a onclick='//\n",
-            context.STATE_JS | context.DELIM_SINGLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            "<a onclick='//\r\n",
-            context.STATE_JS | context.DELIM_SINGLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            u"<a onclick='//\u2028",
-            context.STATE_JS | context.DELIM_SINGLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            '<a onclick="/*',
-            context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            '<a onclick="/*/',
-            context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            '<a onclick="/**/',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            '<a onkeypress="&quot;',
-            context.STATE_JSDQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            r"""<a onclick='&quot;foo&quot;""",
-            context.STATE_JS | context.DELIM_SINGLE_QUOTE
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<a onclick=&#39;foo&#39;',
-            context.STATE_JS | context.DELIM_SPACE_OR_TAG_END
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<a onclick=&#39;foo',
-            context.STATE_JSSQ_STR | context.DELIM_SPACE_OR_TAG_END,
-        ),
-        (
-            '<a onclick="&quot;foo\'',
-            context.STATE_JSDQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="\'foo&quot;',
-            context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<A ONCLICK="\'',
-            context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="/',
-            context.STATE_JSREGEXP | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="\'foo\'',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<a onclick="\'foo\\\'',
-            context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="\'foo\\\'',
-            context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="/foo/',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<script>/foo/ /=',
-            context.STATE_JS | context.ELEMENT_SCRIPT | context.JS_CTX_REGEX,
-        ),
-        (
-            '<a onclick="1 /foo',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<a onclick="1 /*c*/ /foo',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<a onclick="/foo[/]',
-            context.STATE_JSREGEXP | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="/foo\\/',
-            context.STATE_JSREGEXP | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a onclick="/foo/',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_DIV_OP,
-        ),
-        (
-            '<input checked style="',
-            context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="//',
-            context.STATE_CSSLINE_CMT | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="//</script>',
-            context.STATE_CSSLINE_CMT | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            "<a style='//\n",
-            context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
-        ),
-        (
-            "<a style='//\r",
-            context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
-        ),
-        (
-            '<a style="/*',
-            context.STATE_CSSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="/*/',
-            context.STATE_CSSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="/**/',
-            context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="background: \'',
-            context.STATE_CSSSQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="background: &quot;',
-            context.STATE_CSSDQ_STR | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="background: \'/foo?img=',
-            context.STATE_CSSSQ_STR | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_QUERY_OR_FRAG,
-        ),
-        (
-            '<a style="background: \'/',
-            context.STATE_CSSSQ_STR | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a style="background: url(&#x22;/',
-            context.STATE_CSSDQ_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a style="background: url(\'/',
-            context.STATE_CSSSQ_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a style="background: url(\'/)',
-            context.STATE_CSSSQ_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a style="background: url(\'/ ',
-            context.STATE_CSSSQ_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a style="background: url(/',
-            context.STATE_CSS_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_PRE_QUERY,
-        ),
-        (
-            '<a style="background: url( ',
-            context.STATE_CSS_URL | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="background: url( /image?name=',
-            context.STATE_CSS_URL | context.DELIM_DOUBLE_QUOTE
-            | context.URL_PART_QUERY_OR_FRAG,
-        ),
-        (
-            '<a style="background: url(x)',
-            context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="background: url(\'x\'',
-            context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<a style="background: url( x ',
-            context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
-        ),
-        (
-            '<!-- foo',
-            context.STATE_HTMLCMT,
-        ),
-        (
-            '<!-->',
-            context.STATE_HTMLCMT,
-        ),
-        (
-            '<!--->',
-            context.STATE_HTMLCMT,
-        ),
-        (
-            '<!-- foo -->',
-            context.STATE_TEXT,
-        ),
-        (
-            '<script',
-            context.STATE_TAG | context.ELEMENT_SCRIPT,
-        ),
-        (
-            '<script ',
-            context.STATE_TAG | context.ELEMENT_SCRIPT,
-        ),
-        (
-            '<script src="foo.js" ',
-            context.STATE_TAG | context.ELEMENT_SCRIPT,
-        ),
-        (
-            r"""<script src='foo.js' """,
-            context.STATE_TAG | context.ELEMENT_SCRIPT,
-        ),
-        (
-            '<script type=text/javascript ',
-            context.STATE_TAG | context.ELEMENT_SCRIPT,
-        ),
-        (
-            '<script>foo',
-            context.STATE_JS | context.JS_CTX_DIV_OP
-            | context.ELEMENT_SCRIPT,
-        ),
-        (
-            '<script>foo</script>',
-            context.STATE_TEXT,
-        ),
-        (
-            '<script>foo</script><!--',
-            context.STATE_HTMLCMT,
-        ),
-        (
-            '<script>document.write("<p>foo</p>");',
-            context.STATE_JS | context.ELEMENT_SCRIPT
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            r'<script>document.write("<p>foo<\/script>");',
-            context.STATE_JS | context.ELEMENT_SCRIPT | context.JS_CTX_REGEX,
-        ),
-        (
-            '<script>document.write("<script>alert(1)</script>");',
-            context.STATE_TEXT,
-        ),
-        (
-            '<Script>',
-            context.STATE_JS | context.ELEMENT_SCRIPT
-            | context.JS_CTX_REGEX,
-        ),
-        (
-            '<SCRIPT>foo',
-            context.STATE_JS | context.JS_CTX_DIV_OP | context.ELEMENT_SCRIPT,
-        ),
-        (
-            '<textarea>value',
-            context.STATE_RCDATA | context.ELEMENT_TEXTAREA,
-        ),
-        (
-            '<textarea>value</textarea>',
-            context.STATE_TEXT,
-        ),
-        (
-            '<textarea>value</TEXTAREA>',
-            context.STATE_TEXT,
-        ),
-        (
-            '<textarea name=html><b',
-            context.STATE_RCDATA | context.ELEMENT_TEXTAREA,
-        ),
-        (
-            '<title>value',
-            context.STATE_RCDATA | context.ELEMENT_TITLE,
-        ),
-        (
-            '<style>value',
-            context.STATE_CSS | context.ELEMENT_STYLE,
-        ),
-        (
-            '<a xlink:href',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a xmlns',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a xmlns:foo',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a xmlnsxyz',
-            context.STATE_ATTR_NAME,
-        ),
-        (
-            '<a data-url',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a data-iconUri',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a data-urlItem',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a g:',
-            context.STATE_ATTR_NAME,
-        ),
-        (
-            '<a g:url',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a g:iconUri',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a g:urlItem',
-            context.STATE_ATTR_NAME | context.ATTR_URL,
-        ),
-        (
-            '<a g:value',
-            context.STATE_ATTR_NAME,
-        ),
-        (
-            r"""<a svg:style='""",
-            context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
-        ),
-        (
-            '<svg:font-face',
-            context.STATE_TAG_NAME,
-        ),
-        (
-            '<svg:a svg:onclick="',
-            context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-            | context.JS_CTX_REGEX,
-        ))
-
-        for test_input, want in tests:
-            ctx = context_update.process_raw_text(test_input, 0)
-            if ctx != want:
+        tests = (
+            (
+                "",
+                0,
+            ),
+            (
+                'Hello, World!',
+                0,
+                ),
+            (
+                # An orphaned "<" is OK.
+                'I <3 Ponies!',
+                0,
+                'I &lt;3 Ponies!',
+                ),
+            (
+                '<a',
+                context.STATE_TAG_NAME,
+                ),
+            (
+                '<a ',
+                context.STATE_TAG,
+                ),
+            (
+                '<a>',
+                context.STATE_TEXT,
+                ),
+            (
+                '<a href',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a on',
+                context.STATE_ATTR_NAME | context.ATTR_SCRIPT,
+                ),
+            (
+                '<a href ',
+                context.STATE_AFTER_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a style  =  ',
+                context.STATE_BEFORE_VALUE | context.ATTR_STYLE,
+                ),
+            (
+                '<a href=',
+                context.STATE_BEFORE_VALUE | context.ATTR_URL,
+                ),
+            (
+                '<a href=x',
+                context.STATE_URL | context.DELIM_SPACE_OR_TAG_END
+                | context.URL_PART_PRE_QUERY,
+                '<a href="x',
+                ),
+            (
+                '<a href=x ',
+                context.STATE_TAG,
+                '<a href="x" ',
+                ),
+            (
+                '<a href=>',
+                context.STATE_TEXT,
+                ),
+            (
+                '<a href=x>',
+                context.STATE_TEXT,
+                '<a href="x">',
+                ),
+            (
+                "<a href ='",
+                context.STATE_URL | context.DELIM_SINGLE_QUOTE,
+                ),
+            (
+                r"""<a href=''""",
+                context.STATE_TAG,
+                ),
+            (
+                '<a href= "',
+                context.STATE_URL | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a href=""',
+                context.STATE_TAG,
+                ),
+            (
+                '<a title="',
+                context.STATE_ATTR | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                "<a HREF='http:",
+                context.STATE_URL | context.DELIM_SINGLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                r"""<a Href='/""",
+                context.STATE_URL | context.DELIM_SINGLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                "<a href='\"",
+                context.STATE_URL | context.DELIM_SINGLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a href="\'',
+                context.STATE_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                "<a href='&apos;",
+                context.STATE_URL | context.DELIM_SINGLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                "<a href='&#39;",
+                ),
+            (
+                '<a href="&quot;',
+                context.STATE_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                '<a href="&#34;',
+                ),
+            (
+                '<a href="&#34;',
+                context.STATE_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a href=&quot;',
+                context.STATE_URL | context.DELIM_SPACE_OR_TAG_END
+                | context.URL_PART_PRE_QUERY,
+                '<a href="&#34;',
+                ),
+            (
+                '<a href="/search?q=',
+                context.STATE_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_QUERY_OR_FRAG,
+                ),
+            (
+                '<img alt="1">',
+                context.STATE_TEXT,
+                ),
+            (
+                '<img alt="1>"',
+                context.STATE_TAG,
+                '<img alt="1&gt;"',
+                ),
+            (
+                '<img alt="1>">',
+                context.STATE_TEXT,
+                '<img alt="1&gt;">',
+                ),
+            (
+                '<input checked type="checkbox"',
+                context.STATE_TAG,
+                ),
+            (
+                '<a onclick="',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_REGEX,
+                ),
+            (
+                '<a onclick="//foo',
+                context.STATE_JSLINE_CMT | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_REGEX,
+                '<a onclick="',
+                ),
+            (
+                "<a onclick='//\n",
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE
+                | context.JS_CTX_REGEX,
+                "<a onclick='\n",
+                ),
+            (
+                "<a onclick='//\r\n",
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE
+                | context.JS_CTX_REGEX,
+                "<a onclick='\n\n",  # \n\n is ok, \n is ok, \r\n is ok
+                ),
+            (
+                u"<a onclick='//\u2028",
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE
+                | context.JS_CTX_REGEX,
+                "<a onclick='\n",
+                ),
+            (
+                '<a onclick="/*',
+                context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_REGEX,
+                '<a onclick=" ',
+                ),
+            (
+                '<a onclick="/*/',
+                context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_REGEX,
+                '<a onclick=" ',
+                ),
+            (
+                '<a onclick="/**/',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_REGEX,
+                '<a onclick=" ',
+                ),
+            (
+                '<a onkeypress="&quot;',
+                context.STATE_JSDQ_STR | context.DELIM_DOUBLE_QUOTE,
+                '<a onkeypress="&#34;',
+                ),
+            (
+                "<a onclick='&quot;foo&quot;",
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE
+                | context.JS_CTX_DIV_OP,
+                "<a onclick='\"foo\"",
+                ),
+            (
+                '<a onclick=&#39;foo&#39;',
+                context.STATE_JS | context.DELIM_SPACE_OR_TAG_END
+                | context.JS_CTX_DIV_OP,
+                '<a onclick="\'foo\'',
+                ),
+            (
+                '<a onclick=&#39;foo',
+                context.STATE_JSSQ_STR | context.DELIM_SPACE_OR_TAG_END,
+                '<a onclick="\'foo',
+                ),
+            (
+                '<a onclick="&quot;foo\'',
+                context.STATE_JSDQ_STR | context.DELIM_DOUBLE_QUOTE,
+                '<a onclick="&#34;foo\'',
+                ),
+            (
+                '<a onclick="\'foo&quot;',
+                context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
+                '<a onclick="\'foo&#34;',
+                ),
+            (
+                '<A ONCLICK="\'',
+                context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a onclick="/',
+                context.STATE_JSREGEXP | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a onclick="\'foo\'',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_DIV_OP,
+                ),
+            (
+                '<a onclick="\'foo\\\'',
+                context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a onclick="\'foo\\\'',
+                context.STATE_JSSQ_STR | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a onclick="/foo/',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_DIV_OP,
+                ),
+            (
+                '<script>/foo/ /=',
+                context.STATE_JS | context.ELEMENT_SCRIPT
+                | context.JS_CTX_REGEX,
+                ),
+            (
+                '<a onclick="1 /foo',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_DIV_OP,
+                ),
+            (
+                '<a onclick="1 /*c*/ /foo',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_DIV_OP,
+                '<a onclick="1   /foo',
+                ),
+            (
+                '<a onclick="/foo[/]',
+                context.STATE_JSREGEXP | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a onclick="/foo\\/',
+                context.STATE_JSREGEXP | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a onclick="/foo/',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_DIV_OP,
+                ),
+            (
+                '<input checked style="',
+                context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a style="//',
+                context.STATE_CSSLINE_CMT | context.DELIM_DOUBLE_QUOTE,
+                '<a style="',
+                ),
+            (
+                '<a style="//</script>',
+                context.STATE_CSSLINE_CMT | context.DELIM_DOUBLE_QUOTE,
+                '<a style="',
+                ),
+            (
+                "<a style='//\n",
+                context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
+                "<a style='\n",
+                ),
+            (
+                "<a style='//\r",
+                context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
+                "<a style='\n",
+                ),
+            (
+                '<a style="/*',
+                context.STATE_CSSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE,
+                '<a style=" ',
+                ),
+            (
+                '<a style="/*/',
+                context.STATE_CSSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE,
+                '<a style=" ',
+                ),
+            (
+                '<a style="/**/',
+                context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
+                '<a style=" ',
+                ),
+            (
+                '<a style="background: \'',
+                context.STATE_CSSSQ_STR | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a style="background: &quot;',
+                context.STATE_CSSDQ_STR | context.DELIM_DOUBLE_QUOTE,
+                '<a style="background: &#34;',
+                ),
+            (
+                '<a style="background: \'/foo?img=',
+                context.STATE_CSSSQ_STR | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_QUERY_OR_FRAG,
+                ),
+            (
+                '<a style="background: \'/',
+                context.STATE_CSSSQ_STR | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a style="background: url(&#x22;/',
+                context.STATE_CSSDQ_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                '<a style="background: url(&#34;/',
+                ),
+            (
+                '<a style="background: url(\'/',
+                context.STATE_CSSSQ_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a style="background: url(\'/)',
+                context.STATE_CSSSQ_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a style="background: url(\'/ ',
+                context.STATE_CSSSQ_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a style="background: url(/',
+                context.STATE_CSS_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_PRE_QUERY,
+                ),
+            (
+                '<a style="background: url( ',
+                context.STATE_CSS_URL | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a style="background: url( /image?name=',
+                context.STATE_CSS_URL | context.DELIM_DOUBLE_QUOTE
+                | context.URL_PART_QUERY_OR_FRAG,
+                ),
+            (
+                '<a style="background: url(x)',
+                context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a style="background: url(\'x\'',
+                context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<a style="background: url( x ',
+                context.STATE_CSS | context.DELIM_DOUBLE_QUOTE,
+                ),
+            (
+                '<!-- foo',
+                context.STATE_HTMLCMT,
+                '',
+                ),
+            (
+                '<!-->',
+                context.STATE_HTMLCMT,
+                '',
+                ),
+            (
+                '<!--->',
+                context.STATE_HTMLCMT,
+                '',
+                ),
+            (
+                '<!-- foo -->',
+                context.STATE_TEXT,
+                '',
+                ),
+            (
+                '<script',
+                context.STATE_TAG | context.ELEMENT_SCRIPT,
+                ),
+            (
+                '<script ',
+                context.STATE_TAG | context.ELEMENT_SCRIPT,
+                ),
+            (
+                '<script src="foo.js" ',
+                context.STATE_TAG | context.ELEMENT_SCRIPT,
+                ),
+            (
+                r"""<script src='foo.js' """,
+                context.STATE_TAG | context.ELEMENT_SCRIPT,
+                ),
+            (
+                '<script type=text/javascript ',
+                context.STATE_TAG | context.ELEMENT_SCRIPT,
+                '<script type="text/javascript" ',
+                ),
+            (
+                '<script>foo',
+                context.STATE_JS | context.JS_CTX_DIV_OP
+                | context.ELEMENT_SCRIPT,
+                ),
+            (
+                '<script>foo</script>',
+                context.STATE_TEXT,
+                ),
+            (
+                '<script>foo</script><!--',
+                context.STATE_HTMLCMT,
+                '<script>foo</script>',
+                ),
+            (
+                '<script>document.write("<p>foo</p>");',
+                context.STATE_JS | context.ELEMENT_SCRIPT
+                | context.JS_CTX_REGEX,
+                ),
+            (
+                r'<script>document.write("<p>foo<\/script>");',
+                context.STATE_JS | context.ELEMENT_SCRIPT
+                | context.JS_CTX_REGEX,
+                ),
+            (
+                '<script>document.write("<script>alert(1)</script>");',
+                context.STATE_TEXT,
+                ),
+            (
+                '<Script>',
+                context.STATE_JS | context.ELEMENT_SCRIPT
+                | context.JS_CTX_REGEX,
+                ),
+            (
+                '<SCRIPT>foo',
+                context.STATE_JS | context.JS_CTX_DIV_OP
+                | context.ELEMENT_SCRIPT,
+                ),
+            (
+                '<textarea>value',
+                context.STATE_RCDATA | context.ELEMENT_TEXTAREA,
+                ),
+            (
+                '<textarea>value</textarea>',
+                context.STATE_TEXT,
+                ),
+            (
+                '<textarea>value</TEXTAREA>',
+                context.STATE_TEXT,
+                ),
+            (
+                '<textarea name=html><b',
+                context.STATE_RCDATA | context.ELEMENT_TEXTAREA,
+                '<textarea name="html"><b',
+                ),
+            (
+                '<title>value',
+                context.STATE_RCDATA | context.ELEMENT_TITLE,
+                ),
+            (
+                '<style>value',
+                context.STATE_CSS | context.ELEMENT_STYLE,
+                ),
+            (
+                '<a xlink:href',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a xmlns',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a xmlns:foo',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a xmlnsxyz',
+                context.STATE_ATTR_NAME,
+                ),
+            (
+                '<a data-url',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a data-iconUri',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a data-urlItem',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a g:',
+                context.STATE_ATTR_NAME,
+                ),
+            (
+                '<a g:url',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a g:iconUri',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a g:urlItem',
+                context.STATE_ATTR_NAME | context.ATTR_URL,
+                ),
+            (
+                '<a g:value',
+                context.STATE_ATTR_NAME,
+                ),
+            (
+                r"""<a svg:style='""",
+                context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
+                ),
+            (
+                '<svg:font-face',
+                context.STATE_TAG_NAME,
+                ),
+            (
+                '<svg:a svg:onclick="',
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
+                | context.JS_CTX_REGEX,
+                )
+            )
+    
+        for test_case in tests:
+            if len(test_case) == 2:
+                test_input, want_ctx = test_case
+                want_text = test_input
+            else:
+                test_input, want_ctx, want_text = test_case
+            got_ctx, got_text = context_update.process_raw_text(test_input, 0)
+            if got_ctx != want_ctx:
                 self.fail("input %r: want context\n\t%s\ngot\n\t%s"
-                          % (test_input, debug.context_to_string(want),
-                             debug.context_to_string(ctx)))
+                          % (test_input, debug.context_to_string(want_ctx),
+                             debug.context_to_string(got_ctx)))
+            if got_text != want_text:
+                self.fail("input %r: want text\n\t%r\ngot\n\t%r"
+                          % (test_input, want_text, got_text)),
 
     def test_escape(self):
         """
@@ -634,7 +686,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "multipleAttrs",
             "<a b=1 c={{.H}}>",
-            "<a b=1 c=&lt;Hello&gt;>",
+            '<a b="1" c="&lt;Hello&gt;">',
         ),
         (
             "urlStartRel",
@@ -670,8 +722,8 @@ class ContextUpdateTest(unittest.TestCase):
             "nonHierURL",
             ('<a href={{"mailto:Muhammed \\"The Greatest\\" Ali'
              ' <m.ali@example.com>"}}>'),
-            ('<a href=mailto:Muhammed%20%22The%20Greatest%22%20Ali'
-             '%20%3cm.ali@example.com%3e>'),
+            ('<a href="mailto:Muhammed%20%22The%20Greatest%22%20Ali'
+             '%20%3cm.ali@example.com%3e">'),
         ),
         (
             "urlPath",
@@ -738,7 +790,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "jsStr",
             "<button onclick='alert(&quot;{{.H}}&quot;)'>",
-            r"""<button onclick='alert(&quot;\x3cHello\x3e&quot;)'>""",
+            "<button onclick='alert(\"\\x3cHello\\x3e\")'>",
         ),
         (
             "badMarshaller",
@@ -821,7 +873,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "stylePctPassed",
             '<table style=width:{{"100%"}}>',
-            '<table style=width:100%>',
+            '<table style="width:100%">',
         ),
         (
             "styleColorPassed",
@@ -944,7 +996,7 @@ class ContextUpdateTest(unittest.TestCase):
              " &quot;{{\"/**/'\\\";:// \\\\\"}}&quot;\">"),
             (r'<a style="font-family:'
              r" '\2f \2a \2a \2f \27 \22 \3b \3a \2f \2f  \\',"
-             r' &quot;\2f \2a \2a \2f \27 \22 \3b \3a \2f \2f  \\&quot;">'),
+             r' &#34;\2f \2a \2a \2f \27 \22 \3b \3a \2f \2f  \\&#34;">'),
         ),
         (
             "styleURLSpecialsEncoded",
@@ -956,7 +1008,7 @@ class ContextUpdateTest(unittest.TestCase):
              '">'),
             ('<a style="border-image:'
              ' url(/**/%27%22;://%20%5c),'
-             ' url(&quot;/**/%27%22;://%20%5c&quot;),'
+             ' url(&#34;/**/%27%22;://%20%5c&#34;),'
              " url('/**/%27%22;://%20%5c'),"
              " 'http://www.example.com/?q=%2f%2a%2a%2f%27%22%3b%3a%2f%2f%20%5c'"
              '">'),
@@ -1016,7 +1068,7 @@ class ContextUpdateTest(unittest.TestCase):
             # Newline separates break from call. If newline
             # removed, then break will consume label leaving
             # code invalid.
-            "<script>for (;;) { if (c()) break\n" +
+            "<script>for (;;) { if (c()) break \n" +
                 "foo( true );}</script>",
         ),
         (
@@ -1053,22 +1105,22 @@ class ContextUpdateTest(unittest.TestCase):
             '<a onclick="f(&quot;&quot;); /* alert({{.H}}) */">',
             # Attribute comment tests should pass if the comments
             # are successfully elided.
-            '<a onclick="f(&quot;&quot;); /* alert() */">',
+            '<a onclick="f(&#34;&#34;);  ">',
         ),
         (
             "JS attr line comment",
             '<a onclick="// alert({{.G}})">',
-            '<a onclick="// alert()">',
+            '<a onclick="">',
         ),
         (
             "CSS attr block comment",
             '<a style="/* color: {{.H}} */">',
-            '<a style="/* color:  */">',
+            '<a style=" ">',
         ),
         (
             "CSS attr line comment",
             '<a style="// color: {{.G}}">',
-            '<a style="// color: ">',
+            '<a style="">',
         ),
         (
             "HTML substitution commented out",
@@ -1082,7 +1134,7 @@ class ContextUpdateTest(unittest.TestCase):
              "<a onclick='/*{{.}}*///{{.}}' style='/*{{.}}*///{{.}}'>"),
             ("<script> \n</script>"
              "<style> \n</style>"
-             "<a onclick='/**///' style='/**///'>"),
+             "<a onclick=' ' style=' '>"),
         ),
         (
             "typed HTML in text",

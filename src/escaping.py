@@ -29,46 +29,42 @@ ESC_MODE_ESCAPE_HTML_RCDATA = 1
 # HTML.
 ESC_MODE_ESCAPE_HTML_ATTRIBUTE = 2
 
-# Encodes HTML special characters and spaces so that the value can
-# appear as part of an unquoted attribute.
-ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE = 3
+# Only allow a valid identifier - letters, numbers, dashes, and underscores.
+# Throws an exception otherwise.
+ESC_MODE_FILTER_HTML_ELEMENT_NAME = 3
 
 # Only allow a valid identifier - letters, numbers, dashes, and underscores.
 # Throws an exception otherwise.
-ESC_MODE_FILTER_HTML_ELEMENT_NAME = 4
-
-# Only allow a valid identifier - letters, numbers, dashes, and underscores.
-# Throws an exception otherwise.
-ESC_MODE_FILTER_HTML_ATTRIBUTE = 5
+ESC_MODE_FILTER_HTML_ATTRIBUTE = 4
 
 # Encode all HTML special characters and quotes, and JS newlines as
 # if to allow them to appear literally in a JS string.
-ESC_MODE_ESCAPE_JS_STRING = 6
+ESC_MODE_ESCAPE_JS_STRING = 5
 
 # If a number or boolean, output as a JS literal.  Otherwise surround
 # in quotes and escape.  Make sure all HTML and space characters are
 # quoted.
-ESC_MODE_ESCAPE_JS_VALUE = 7
+ESC_MODE_ESCAPE_JS_VALUE = 6
 
 # Like ESC_MODE_ESCAPE_JS_STRING but additionally escapes RegExp specials like
 # ".+*?$^[](){}".
-ESC_MODE_ESCAPE_JS_REGEX = 8
+ESC_MODE_ESCAPE_JS_REGEX = 7
 
 # Must escape all quotes, newlines, and the close parenthesis using
 # '\\' followed by hex followed by a space.
-ESC_MODE_ESCAPE_CSS_STRING = 9
+ESC_MODE_ESCAPE_CSS_STRING = 8
 
 # If the value is numeric, renders it as a numeric value so that
 # "{$n}px" works as expected, otherwise if it is a valid
 # CSS identifier, outputs it without escaping, otherwise surrounds in
 # quotes and escapes like ESC_MODE_ESCAPE_CSS_STRING.
-ESC_MODE_FILTER_CSS_VALUE = 10
+ESC_MODE_FILTER_CSS_VALUE = 9
 
 # Percent encode all URL special characters and characters that
 # cannot appear unescaped in a URL such as spaces.  Make sure to
 # encode pluses and parentheses.
 # This corresponds to the JavaScript function encodeURIComponent.
-ESC_MODE_ESCAPE_URL = 11
+ESC_MODE_ESCAPE_URL = 10
 
 # Percent encode non-URL characters that cannot appear unescaped in a
 # URL such as spaces, and encode characters that are not special in
@@ -77,16 +73,20 @@ ESC_MODE_ESCAPE_URL = 11
 # function encodeURI but additionally encodes quotes
 # parentheses, and percent signs that are not followed by two hex
 # digits.
-ESC_MODE_NORMALIZE_URL = 12
+ESC_MODE_NORMALIZE_URL = 11
 
 # Filters out URL schemes like "javascript:" that load code.
-ESC_MODE_FILTER_URL = 13
+ESC_MODE_FILTER_URL = 12
 
 # The explicit rejection of escaping.
-ESC_MODE_NO_AUTOESCAPE = 14
+ESC_MODE_NO_AUTOESCAPE = 13
 
 # A mapping from all inputs to a single space.
-ESC_MODE_ELIDE = 15
+ESC_MODE_ELIDE = 14
+
+# Introduces a double quote at the beginning for interpolation values
+# that start an open quoted HTML_ATTRIBUTE
+ESC_MODE_OPEN_QUOTE = 15
 
 # One greater than the max of ESC_MODE_*.
 _COUNT_OF_ESC_MODES = 16
@@ -95,7 +95,6 @@ HTML_EMBEDDABLE_ESC_MODES = set([
     ESC_MODE_ESCAPE_HTML,
     ESC_MODE_ESCAPE_HTML_RCDATA,
     ESC_MODE_ESCAPE_HTML_ATTRIBUTE,
-    ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE,
     ESC_MODE_FILTER_HTML_ELEMENT_NAME,
     ESC_MODE_FILTER_HTML_ATTRIBUTE,
     ESC_MODE_ESCAPE_CSS_STRING,
@@ -224,24 +223,6 @@ def escape_html_attribute(value):
     if type(value) not in (str, unicode):
         value = str(value)
     return _escape_html_helper(value)
-
-
-def escape_html_attribute_nospace(value):
-    """
-    Escapes HTML special characters in a string including space and other
-    characters that can end an unquoted HTML attribute value.
-
-    value - The HTML to be escaped.  May not be a string, but the
-        value will be coerced to a string.
-
-    Returns an escaped version of value.
-    """
-    if (isinstance(value, content.TypedContent)
-        and value.kind == content.CONTENT_KIND_HTML):
-        return _normalize_html_nospace_helper(_strip_html_tags(value.content))
-    if type(value) not in (str, unicode):
-        value = str(value)
-    return _escape_html_nospace_helper(value)
 
 
 def filter_html_attribute(value):
@@ -476,15 +457,28 @@ def filter_url(value):
     return value
 
 
-def elide(value):
+def elide(_):
     """
-    Returns a space so that interpolations inside commented out template code
-    don't contain.
+    Since comments are elided from the static template text, we also elide
+    the values interpolated into them.
 
-    TODO: once comment elision in raw text is implemented, this should become
-    the empty string.
+    Always returns the empty string.
     """
-    return ' '
+    return ''
+
+
+def open_quote(value):
+    """
+    When we encounter an interpolation hole like '<img src={{.}}>', we do an
+    epsilon transition into an unquoted value state.
+
+    This means that there is no readily available text node to which we can
+    append a double quote character to normalize attribute quotes.
+
+    So we add an escaper to the interpolation that prefixes the value with
+    a quote.
+    """
+    return '"%s' % value
 
 
 def escape_css_string(value):
@@ -606,13 +600,11 @@ def _replacer_for_css(match):
 
 _MATCHER_FOR_ESCAPE_HTML = re.compile(r'[\x00"&\x27<>]')
 
+_MATCHER_FOR_ESCAPE_HTML_SQ_ONLY = re.compile(r'[\x00&\x27<>]')
+
+_MATCHER_FOR_ESCAPE_HTML_DQ_ONLY = re.compile(r'[\x00&"<>]')
+
 _MATCHER_FOR_NORMALIZE_HTML = re.compile(r'[\x00"\x27<>]')
-
-_MATCHER_FOR_ESCAPE_HTML_NOSPACE = re.compile(
-    ur'[\x00\x09-\x0d "&\x27\-\/<=>\`\x85\xa0\u2028\u2029]')
-
-_MATCHER_FOR_NORMALIZE_HTML_NOSPACE = re.compile(
-    ur'[\x00\x09-\x0d "\x27\-\/<=>`\x85\xa0\u2028\u2029]')
 
 _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&\x27\/<=>\\\x85\u2028\u2029]')
@@ -637,17 +629,18 @@ def _escape_html_helper(value):
     """ '<a&gt;' -> '&lt;a&amp;gt;' """
     return _MATCHER_FOR_ESCAPE_HTML.sub(_replacer_for_html, value)
 
+def escape_html_sq_only(value):
+    """ Escapes an HTML attribute value for embedding between single quotes."""
+    return _MATCHER_FOR_ESCAPE_HTML_SQ_ONLY.sub(_replacer_for_html, value)
+
+def escape_html_dq_only(value):
+    """ Escapes an HTML attribute value for embedding between double quotes."""
+    return _MATCHER_FOR_ESCAPE_HTML_DQ_ONLY.sub(_replacer_for_html, value)
+
+
 def _normalize_html_helper(value):
     """ '<a&gt;' -> '&lt;a&gt;' """
     return _MATCHER_FOR_NORMALIZE_HTML.sub(_replacer_for_html, value)
-
-def _escape_html_nospace_helper(value):
-    """ '<a &gt;' -> '&lt;a&#32;&amp;gt;' """
-    return _MATCHER_FOR_ESCAPE_HTML_NOSPACE.sub(_replacer_for_html, value)
-
-def _normalize_html_nospace_helper(value):
-    """ '<a &gt;' -> '&lt;a&#32;&gt;' """
-    return _MATCHER_FOR_NORMALIZE_HTML_NOSPACE.sub(_replacer_for_html, value)
 
 def _escape_js_string_helper(value):
     """ '</script>' -> '\x3c/script\x3e' """
@@ -681,8 +674,6 @@ SANITIZER_FOR_ESC_MODE = [None for _ in xrange(0, _COUNT_OF_ESC_MODES)]
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML ] = escape_html
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML_RCDATA ] = escape_html_rcdata
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML_ATTRIBUTE ] = escape_html_attribute
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE ] = (
-    escape_html_attribute_nospace)
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_HTML_ELEMENT_NAME ] = (
     filter_html_element_name)
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_HTML_ATTRIBUTE ] = filter_html_attribute
@@ -695,3 +686,4 @@ SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_URL ] = escape_url
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_NORMALIZE_URL ] = normalize_url
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_URL ] = filter_url
 SANITIZER_FOR_ESC_MODE[ ESC_MODE_ELIDE ] = elide
+SANITIZER_FOR_ESC_MODE[ ESC_MODE_OPEN_QUOTE ] = open_quote

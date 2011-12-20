@@ -169,6 +169,12 @@ class TextNode(Node):
         """
         return self.text
 
+    def with_raw_content(self, new_content):
+        """
+        Returns a version of this node but with the given text content.
+        """
+        return TextNode(self.loc, new_content)
+
     def reduce_traces(self, start_state, analyzer):
         return analyzer.step(start_state, self, debug_hint=self.loc)
 

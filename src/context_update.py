@@ -8,8 +8,9 @@ content.
 from context import *
 import debug
 import escaping
-import htmlentitydefs
+import html
 import re
+import StringIO
 
 
 REGEX_PRECEDER_KEYWORDS = set([
@@ -172,46 +173,6 @@ def context_after_attr_delimiter(el_type, attr_type, delim):
 # regex charset.
 NLS = u"\r\n\u2028\u2029"
 
-
-def _unescape_html(html):
-    """
-    Given HTML that would parse to a single text node, returns the text
-    value of that node.
-    """
-    # Fast path for common case.
-    if html.find("&") < 0:
-        return html
-    return re.sub(
-        '&(?:#(?:x([0-9A-Fa-f]+)|([0-9]+))|([a-zA-Z0-9]+));',
-        _decode_html_entity, html)
-
-
-def _decode_html_entity(match):
-    """
-    Regex replacer that expects hex digits in group 1, or
-    decimal digits in group 2, or a named entity in group 3.
-    """
-    group = match.group(1)
-    if group:
-        return unichr(int(group, 16))
-    group = match.group(2)
-    if group:
-        return unichr(int(group, 10))
-    group = match.group(3)
-    if group:
-        decoding = (
-            htmlentitydefs.name2codepoint.get(group)
-            # Try treating &GT; like &gt;.
-            # This may be wrong for some codepoints.
-            # Specifically, &Gt; and &Lt; which HTML5 adopted from MathML.
-            # If htmlentitydefs is expanded to include mappings for those
-            # entities, then this code will magically work.
-            or htmlentitydefs.name2codepoint.get(group.lower()))
-        if decoding is not None:
-            return unichr(decoding)
-    # Treat "&noSuchEntity;" as "&noSuchEntity;"
-    return match.group(0)
-
 def _end_of_attr_value(raw_text, delim):
     """
     Returns the end of the attribute value of -1 if delim indicates we are
@@ -237,7 +198,10 @@ class _Transition(object):
     production is seen in a chunk of HTML/CSS/JS input.
     """
     def __init__(self, pattern):
-        self.pattern = re.compile(pattern)
+        if type(pattern) is type(re.compile('')):
+            self.pattern = pattern
+        else:
+            self.pattern = re.compile(pattern)
 
     def is_applicable_to(self, prior, match):
         """
@@ -268,7 +232,7 @@ class _Transition(object):
         Called to normalize the matched text.
         """
         assert self
-        return match.group(0)
+        return match.string[:match.end()]
 
 class _ToTransition(_Transition):
     """
@@ -301,15 +265,58 @@ class _NormalizeTransition(_Transition):
     A transition that replaces the matched text with alternate text.
     """
 
-    def __init__(self, regex, repl):
-        _Transition.__init__(self, regex)
+    def __init__(self, transition, repl, replace_whole=False):
+        _Transition.__init__(self, transition.pattern)
+        self.transition = transition
         self.repl = repl
+        self.replace_whole = replace_whole
 
     def compute_next_context(self, prior, match):
-        return prior
+        return self.transition.compute_next_context(prior, match)
+
+    def is_applicable_to(self, prior, match):
+        return self.transition.is_applicable_to(prior, match)
 
     def raw_text(self, match):
-        return self.repl
+        if self.replace_whole:
+            return self.repl
+        else:
+            return ''.join((match.string[:match.start()], self.repl))
+
+class _NormalizeJsBlockCommentTransition(_NormalizeTransition):
+    """
+    A normalizing transition for content in the body of a JS block comment.
+
+    JS block comments are lexically significant since they are replaced with
+
+    > 7.4 Comments
+    > Comments behave like white space and are discarded except that, if a
+    > MultiLineComment contains a line terminator character, then the entire
+    > comment is considered to be a LineTerminator for purposes of parsing by
+    > the syntactic grammar.
+
+    which means that
+
+    if (x) return /*
+    */ f()
+
+    is quite different from
+
+    if (x) return /* */ f()
+
+    This class normalizes any chunk of text that contains a line terminator
+    character with '\n'.
+    """
+
+    def __init__(self, pattern):
+        _NormalizeTransition.__init__(self, pattern, "", True)
+
+    def raw_text(self, match):
+        text = match.string[:match.end()]
+        if re.search('[%s]' % NLS, text):
+            return '\n'
+        else:
+            return ''
 
 _TAG_DONE_ELEMENT_TO_PARTIAL_CONTEXT = {
     ELEMENT_NONE: STATE_TEXT,
@@ -345,31 +352,6 @@ class _TransitionBackToTag(_Transition):
     def compute_next_context(self, prior, match):
         return STATE_TAG | element_type_of(prior)
 
-# Lower case names of attributes whose value is a URL.
-# This does not identify attributes like "<meta content>" which is
-# conditionally a URL
-# depending on the value of other attributes.
-# http://www.w3.org/TR/html4/index/attributes.html defines HTML4 attrs
-# with type %URL.
-_URL_ATTR_NAMES = set([
-    "action",
-    "archive",
-    "background",
-    "cite",
-    "classid",
-    "codebase",
-    "data",
-    "dsync",
-    "formaction",
-    "href",
-    "longdesc",
-    "manifest",
-    "poster",
-    "profile",
-    "src",
-    "usemap",
-    "xmlns"])
-
 class _TransitionToAttrName(_Transition):
     """
     A transition to a context in the name of an attribute whose attribute
@@ -396,7 +378,7 @@ class _TransitionToAttrName(_Transition):
             attr = ATTR_SCRIPT
         elif "style" == attr_name:
             attr = ATTR_STYLE
-        elif attr_name in _URL_ATTR_NAMES:
+        elif attr_name in html.URL_ATTR_NAMES:
             attr = ATTR_URL
         # Heuristic for custom HTML attributes and HTML5 data-* attributes.
         elif (attr_name.find('url') & attr_name.find('uri')) >= 0:
@@ -610,14 +592,15 @@ class _DivPreceder(_Transition):
 _TRANSITIONS = [None for _ in xrange(0, COUNT_OF_STATES)]
 _TRANSITIONS[STATE_TEXT] = (
     _TransitionToSelf( r"""^[^<]+""" ),
-    _ToTransition( r"""<!--""", STATE_HTMLCMT ),
+    _NormalizeTransition( _ToTransition( r"""<!--""", STATE_HTMLCMT ), "" ),
     _ToTagTransition( r"""(?i)<script(?=[\s>\/]|$)""", ELEMENT_SCRIPT ),
     _ToTagTransition( r"""(?i)<style(?=[\s>\/]|$)""", ELEMENT_STYLE ),
     _ToTagTransition( r"""(?i)<textarea(?=[\s>\/]|$)""",
                       ELEMENT_TEXTAREA ),
     _ToTagTransition( r"""(?i)<title(?=[\s>\/]|$)""", ELEMENT_TITLE ),
     _ToTagTransition( r"""(?i)<xmp(?=[\s>\/]|$)""", ELEMENT_XMP ),
-    _NormalizeTransition( r"""<(?!/?[A-Za-z]|!DOCTYPE)""", "&lt;" ),
+    _NormalizeTransition( _TransitionToSelf( r"""<(?!/?[A-Za-z]|!DOCTYPE)""" ),
+                          "&lt;" ),
     _ToTransition( r"""<""", STATE_HTML_BEFORE_TAG_NAME ),
     )
 _TRANSITIONS[ STATE_RCDATA ] = (
@@ -667,8 +650,8 @@ _TRANSITIONS[ STATE_BEFORE_VALUE ] = (
     _TransitionToSelf( r"""^\s+""" ),
     )
 _TRANSITIONS[ STATE_HTMLCMT ] = (
-    _ToTransition( r"""-->""", STATE_TEXT ),
-    _TRANSITION_TO_SELF,
+    _NormalizeTransition( _ToTransition( r"""-->""", STATE_TEXT ), "", True ),
+    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
     )
 _TRANSITIONS[ STATE_ATTR ] = (
     _TRANSITION_TO_SELF,
@@ -676,9 +659,12 @@ _TRANSITIONS[ STATE_ATTR ] = (
 # The CSS transitions below are based on
 # http://www.w3.org/TR/css3-syntax/#lexical
 _TRANSITIONS[ STATE_CSS ] = (
-    _TransitionToState( r"""\/\*""", STATE_CSSBLOCK_CMT ),
+    _NormalizeTransition(
+        _TransitionToState( r"""\/\*""", STATE_CSSBLOCK_CMT ),
+        " " ),
     # Non-standard but widely supported.
-    _TransitionToState( r"""\/\/""", STATE_CSSLINE_CMT ),
+    _NormalizeTransition(
+        _TransitionToState( r"""\/\/""", STATE_CSSLINE_CMT ), "" ),
     _TransitionToState( r"""[\"]""", STATE_CSSDQ_STR ),
     _TransitionToState( r"""\'""", STATE_CSSSQ_STR ),
     _CssUriTransition( r"""(?i)\burl\s*\(\s*([\"\']?)""" ),
@@ -686,14 +672,21 @@ _TRANSITIONS[ STATE_CSS ] = (
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[ STATE_CSSBLOCK_CMT ] = (
-    _TransitionToState( r"""\*\/""", STATE_CSS ),
-    _STYLE_TAG_END,
-    _TRANSITION_TO_SELF,
+    _NormalizeTransition(
+        _TransitionToState( r"""\*\/""", STATE_CSS ), "", True ),
+    _NormalizeTransition(
+        _STYLE_TAG_END,
+        "</style", True ),
+    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
     )
 _TRANSITIONS[ STATE_CSSLINE_CMT ] = (
-    _TransitionToState( r"""[\n\f\r]""", STATE_CSS ),
-    _STYLE_TAG_END,
-    _TRANSITION_TO_SELF,
+    _NormalizeTransition(
+        _TransitionToState( r"""[\n\f\r]""", STATE_CSS ),
+        "\n", True ),
+    _NormalizeTransition(
+        _STYLE_TAG_END,
+        "</style", True ),
+    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
     )
 _TRANSITIONS[ STATE_CSSDQ_STR ] = (
     _TransitionToState( r"""[\"]""", STATE_CSS ),
@@ -735,8 +728,24 @@ _TRANSITIONS[ STATE_CSSDQ_URL ] = (
     _STYLE_TAG_END,
     )
 _TRANSITIONS[ STATE_JS ] = (
-    _TransitionToState( r"""/[*]""", STATE_JSBLOCK_CMT ),
-    _TransitionToState( r"""//""", STATE_JSLINE_CMT ),
+    _NormalizeTransition(
+        _TransitionToState( r"""/[*]""", STATE_JSBLOCK_CMT ),
+        # We need at least one space to prevent blurring of boundaries.
+        #     1-/**/-1
+        # should remain the token sequence
+        #     1 - - 1
+        # and not become the different token sequence
+        #     1 -- 1
+        # Similarly, the token sequence
+        #     x</**//script|foo/i.match(s)[0]
+        # should remain the token sequence
+        #     x < /script|foo/i . match ( s ) [ 0 ]
+        # and not become the invalid token sequence
+        #     x </script ...
+        " " ),
+    _NormalizeTransition(
+        _TransitionToState( r"""//""", STATE_JSLINE_CMT ),
+        "" ),
     _TransitionToJsString( r"""[\"]""", STATE_JSDQ_STR ),
     _TransitionToJsString( r"""\'""", STATE_JSSQ_STR ),
     _SlashTransition( r"""/""" ),
@@ -748,15 +757,17 @@ _TRANSITIONS[ STATE_JS ] = (
     _SCRIPT_TAG_END,
     )
 _TRANSITIONS[ STATE_JSBLOCK_CMT ] = (
-    _TransitionToState( r"""[*]/""", STATE_JS ),
-    _SCRIPT_TAG_END,
-    _TRANSITION_TO_SELF,
+    _NormalizeJsBlockCommentTransition(
+        _TransitionToState( r"""[*]/""", STATE_JS ) ),
+    _NormalizeTransition( _SCRIPT_TAG_END, "</script", True ),
+    _NormalizeJsBlockCommentTransition( _TRANSITION_TO_SELF ),
     )
 # Line continuations are not allowed in line comments.
 _TRANSITIONS[ STATE_JSLINE_CMT ] = (
-    _TransitionToState( "[%s]" % NLS, STATE_JS ),
-    _SCRIPT_TAG_END,
-    _TRANSITION_TO_SELF,
+    _NormalizeTransition( _TransitionToState( "[%s]" % NLS, STATE_JS ),
+                          "\n", True ),
+    _NormalizeTransition( _SCRIPT_TAG_END, "</script", True ),
+    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
     )
 _TRANSITIONS[ STATE_JSDQ_STR ] = (
     _DivPreceder( r"""[\"]""" ),
@@ -819,7 +830,7 @@ def _process_next_token(text, context):
     Output is stored in member variables.
     text - Non empty.
 
-    Returns (n, context after text[:n])
+    Returns (n, context after text[:n], replacement for text[:n])
     """
 
     if is_error_context(context):  # The ERROR state is infectious.
@@ -855,7 +866,9 @@ def _process_next_token(text, context):
         raise Exception('inf loop. for %r in %s'
                         % (text, debug.context_to_string(context)))
 
-    return num_consumed, next_context
+    return (num_consumed,
+            next_context,
+            earliest_transition.raw_text(earliest_match))
 
 
 def process_raw_text(raw_text, context):
@@ -863,10 +876,14 @@ def process_raw_text(raw_text, context):
     raw_text - A chunk of HTML/CSS/JS.
     context - The context before raw_text.
 
-    Returns the context after raw_text.
+    Returns the context after raw_text, and a normalized version of the text.
     """
 
+    normalized = StringIO.StringIO()
+
     while raw_text:
+        delim_type = delim_type_of(context)
+        
         # If we are in an attribute value, then decode raw_text (except
         # for the delimiter) up to the next occurrence of delimiter.
 
@@ -874,12 +891,18 @@ def process_raw_text(raw_text, context):
         # or > symbol that closes an attribute, at the end of the raw_text,
         # or -1 if no decoding needs to happen.
 
-        attr_value_end = _end_of_attr_value(raw_text, delim_type_of(context))
+        attr_value_end = _end_of_attr_value(raw_text, delim_type)
         if attr_value_end == -1:
             # Outside an attribute value.  No need to decode.
-            num_consumed, context = _process_next_token(
+            num_consumed, context, replacement_text = _process_next_token(
                 raw_text, context)
             raw_text = raw_text[num_consumed:]
+            normalized.write(replacement_text)
+
+            if delim_type_of(context) == DELIM_SPACE_OR_TAG_END:
+                # Introduce a double quote when we transition into an unquoted
+                # attribute body.
+                normalized.write('"')
         else:
             # Inside an attribute value.  Find the end and decode up to it.
 
@@ -903,8 +926,7 @@ def process_raw_text(raw_text, context):
             # The end of the attribute value.  At attr_value_end, or
             # attr_value_end + 1 if a delimiter needs to be consumed.
             if attr_value_end < len(raw_text):
-                attr_end = (
-                    attr_value_end + len(DELIM_TEXT[delim_type_of(context)]))
+                attr_end = attr_value_end + len(DELIM_TEXT[delim_type])
             else:
                 attr_end = -1
 
@@ -927,14 +949,20 @@ def process_raw_text(raw_text, context):
 
             # We use this example more in the comments below.
 
-            attr_value_tail = _unescape_html(raw_text[:attr_value_end])
+            attr_value_tail = html.unescape_html(raw_text[:attr_value_end])
             # attr_value_tail is "!\")" in the example above.
+
+            if delim_type == DELIM_SINGLE_QUOTE:
+                escaper = escaping.escape_html_sq_only
+            else:
+                escaper = escaping.escape_html_dq_only
 
             # Recurse on the decoded value.
             while attr_value_tail:
-                num_consumed, context = _process_next_token(
+                num_consumed, context, replacement = _process_next_token(
                     attr_value_tail, context)
                 attr_value_tail = attr_value_tail[num_consumed:]
+                normalized.write(escaper(replacement))
 
             # TODO: Maybe check that context is legal to end an attr in.
             # Throw if the attribute ends inside a quoted string.
@@ -945,12 +973,19 @@ def process_raw_text(raw_text, context):
 
                 # When an attribute ends, we're back in the tag.
                 context = STATE_TAG | element_type_of(context)
+
+                # Append the delimiter on exiting an attribute.
+                if delim_type == DELIM_SINGLE_QUOTE:
+                    normalized.write("'")
+                else:
+                    # Inserts an end quote for unquoted attributes.
+                    normalized.write('"')
             else:
                 # Whole tail is part of an unterminated attribute.
                 if attr_value_end != len(raw_text):
                     raise Exception()  # Illegal state.
                 raw_text = ""
-    return context
+    return context, normalized.getvalue()
 
 
 # TODO: If we need to deal with untrusted templates, then we need to make
@@ -997,15 +1032,10 @@ def escaping_mode_for_hole(context_before):
     delim_type = delim_type_of(context)
     if delim_type != DELIM_NONE:
         # Figure out how to escape the attribute value.
-        if esc_mode == escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE:
-            if delim_type == DELIM_SPACE_OR_TAG_END:
-                esc_modes[-1] = escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE
-        elif (esc_mode not in (escaping.ESC_MODE_ESCAPE_HTML,
-                               escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE)
-              and esc_mode not in escaping.HTML_EMBEDDABLE_ESC_MODES):
-            if delim_type == DELIM_SPACE_OR_TAG_END:
-                esc_modes.append(
-                    escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE_NOSPACE)
-            else:
-                esc_modes.append(escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE)
+        if (esc_mode != escaping.ESC_MODE_ESCAPE_HTML
+            and esc_mode not in escaping.HTML_EMBEDDABLE_ESC_MODES):
+            esc_modes.append(escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE)
+        if (delim_type_of(context_before) == DELIM_NONE
+            and delim_type == DELIM_SPACE_OR_TAG_END):
+            esc_modes.append(escaping.ESC_MODE_OPEN_QUOTE)
     return context, tuple(esc_modes)

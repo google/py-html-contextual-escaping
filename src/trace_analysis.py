@@ -39,13 +39,17 @@ class Analyzer(object):
           2. to_raw_content() -> str|unicode
           3. to_callee() -> template name
 
-        Values that return a non-None value from to_callee() must
-        provide a with_callee(callee) that returns a clone but with the
-        given callee.
-
         Values that return a non-None value from to_pipeline() must
         provate a with_pipeline(pipeline) methods that returns a clone
         but with any inserted pipeline elements.
+
+        Values that return a non-None value from to_raw_content() must
+        provate a with_raw_content(str) methods that returns a clone
+        but with the given raw content instead.
+
+        Values that return a non-None value from to_callee() must
+        provide a with_callee(callee) that returns a clone but with the
+        given callee.
 
         Returns the state after the step_value.
         """

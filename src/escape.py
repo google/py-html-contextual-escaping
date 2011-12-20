@@ -78,8 +78,10 @@ class _Analyzer(trace_analysis.Analyzer):
         # Tracks the set of templates and the contexts in which they are
         # called.  A set (name, start_context)
         self.called = set()
-        # Maps pipelines to escaping modes
+        # Maps interpolation nodes to pipelines and escaping modes
         self.interps = {}
+        # Maps text nodes to replacement text.
+        self.text_values = {}
         # Maps external calls (step_values) to the contexts
         # in which they occur.
         # This assumes that cloned() step_values are distinct
@@ -96,12 +98,14 @@ class _Analyzer(trace_analysis.Analyzer):
         if hasattr(step_value, 'to_raw_content'):
             raw_content = step_value.to_raw_content()
             if raw_content is not None:
-                end_state = context_update.process_raw_text(
+                end_state, new_content = context_update.process_raw_text(
                     raw_content, start_state)
                 if (context.is_error_context(end_state)
                     and not context.is_error_context(start_state)):
                     self.warn('bad content in %s: `%s`' % (
                         debug.context_to_string(start_state), raw_content))
+                if new_content != raw_content:
+                    self.text_values[step_value] = new_content
                 return end_state
         if hasattr(step_value, 'to_pipeline'):
             pipeline = step_value.to_pipeline()
@@ -201,6 +205,7 @@ class _Analyzer(trace_analysis.Analyzer):
         # Copy inferences and pending changes from analyzer back into self.
         _copyinto(self.templates, analyzer.templates)
         _copyinto(self.called, analyzer.called)
+        _copyinto(self.text_values, analyzer.text_values)
         _copyinto(self.interps, analyzer.interps)
         _copyinto(self.calls, analyzer.calls)
         _copyinto(self.warnings, analyzer.warnings)
@@ -245,6 +250,9 @@ class _Analyzer(trace_analysis.Analyzer):
             Rewrites pipelines and template calls in a template body by walking
             the node tree under the body.
             """
+            if node in self.text_values:
+                new_content = self.text_values[node]
+                node = node.with_raw_content(new_content)
             if node in self.interps:
                 pipeline, esc_modes = self.interps[node]
                 required = [escaping.SANITIZER_FOR_ESC_MODE[esc_mode].__name__
