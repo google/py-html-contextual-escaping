@@ -523,7 +523,7 @@ class ContextUpdateTest(unittest.TestCase):
             (
                 '<textarea name=html><b',
                 context.STATE_RCDATA | context.ELEMENT_TEXTAREA,
-                '<textarea name="html"><b',
+                '<textarea name="html">&lt;b',
                 ),
             (
                 '<title>value',
@@ -1150,9 +1150,9 @@ class ContextUpdateTest(unittest.TestCase):
             "typed HTML in script",
             '<button onclick="alert({{.W}})">',
             (r'<button onclick="alert('
-             r'&#34;&amp;iexcl;\u003cb class=\&#34;foo\&#34;\u003e'
-             r'Hello\u003c/b\u003e, '
-             r'\u003ctextarea\u003eO&#39;World\u003c/textarea\u003e!&#34;)">'),
+             r'&#34;&amp;iexcl;\x3cb class=\&#34;foo\&#34;\x3e'
+             r'Hello\x3c/b\x3e, '
+             r'\x3ctextarea\x3eO&#39;World\x3c/textarea\x3e!&#34;)">'),
         ),
         (
             "typed HTML in RCDATA",
