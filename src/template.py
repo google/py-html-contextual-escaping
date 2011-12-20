@@ -10,7 +10,9 @@ import re
 
 
 # Functions available by default.
-_BUILTIN_FNS = {}
+_BUILTIN_FNS = {
+    'noescape': lambda x: x,
+    }
 
 for _builtin_fn in escaping.SANITIZER_FOR_ESC_MODE:
     if _builtin_fn is not None:
@@ -269,8 +271,8 @@ class CallNode(ExprNode):
                 self.name, ", ".join([str(arg) for arg in self.args]))
 
 
-class StrLitNode(ExprNode):
-    """A string literal in an expression"""
+class LiteralNode(ExprNode):
+    """A literal value."""
 
     def __init__(self, loc, value):
         ExprNode.__init__(self, loc)
@@ -286,7 +288,7 @@ class StrLitNode(ExprNode):
 
     def with_children(self, children):
         assert len(children) == 0
-        return StrLitNode(self.loc, self.value)
+        return LiteralNode(self.loc, self.value)
 
     def __str__(self):
         return repr(self.value)
@@ -330,7 +332,7 @@ class TemplateNode(Node):
 
     def with_callee(self, callee):
         return TemplateNode(
-            self.loc, StrLitNode(self.name.loc, repr(str(callee))), self.expr)
+            self.loc, LiteralNode(self.name.loc, repr(str(callee))), self.expr)
 
     def reduce_traces(self, start_state, analyzer):
         return analyzer.step(start_state, self, debug_hint=self.loc)
@@ -537,9 +539,8 @@ def parse_templates(loc, code, name=None):
         if token is None or not re.search(
             r'(?s)\A\{\{define\b.*\}\}\Z', token):
             toks.fail('expected {{define...}} not %s' % token)
-        expr = _parse_expr(toks.loc_at(), token[len('{{define'):-2])
+        name = _require_name(toks, token[len('{{define'):-2].strip())
         toks.consume()
-        name = expr.execute(Env(None, {}, {}))
         if name is None:
             toks.fail("expected name as quoted string, not %s" % expr)
         define(name)
@@ -691,9 +692,18 @@ def _parse_expr(loc, toks, consume_all=True):
             if len(token) < 2 or token[-1] != ch0:
                 toks.fail('malformed string literal %s' % token)
             toks.consume()
-            return StrLitNode(loc, unescape(token))
-        # Assume a function call.
+            return LiteralNode(loc, unescape(token))
+        if _NUMBER.search(token):
+            toks.consume()
+            if _INT.search(token):
+                number = int(token)
+            else:
+                number = float(token)
+            return LiteralNode(loc, number)
+        # Assume a function call or keyword value.
         name = parse_name()
+        if name in _LITERAL_VALUES:
+            return LiteralNode(loc, _LITERAL_VALUES[name])
         toks.expect('(')
         args = []
         if not toks.check(')'):
@@ -712,10 +722,7 @@ def _parse_expr(loc, toks, consume_all=True):
         """
         toks.skip_ignorable()
         token = toks.peek()
-        if token is None:
-            toks.fail('missing function name at end of %s' % all_toks)
-        if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
-            toks.fail('expected function name but got %s' % token)
+        _require_name(toks, token)
         toks.consume()
         return token
 
@@ -908,3 +915,35 @@ def _is_pipe(expr):
     functions are called pipeline elements.
     """
     return isinstance(expr, CallNode) and len(expr.args) == 1
+
+
+_LITERAL_VALUES = {
+    'None': None,
+    'True': True,
+    'False': False,
+    }
+
+_INT = re.compile('\A[+-]?(0[xX][0-9A-Fa-f]|0+|[1-9][0-9]*)\Z')
+
+_NUMBER = re.compile(
+    '\A[+-]?('
+    # Hex
+    '0[xX][0-9A-Fa-f]'
+    # Decimal
+    '|(?:'
+      # Integer part and optional fraction 
+      '(?:0+|[1-9][0-9]*)(?:\.[0-9]*)?'
+      # Decimal point and mandatory fraction
+      '|\.[0-9]+'
+    ')'
+    # Optional exponent
+    '(?:[eE][+-]?[0-9]+)?'
+    ')\Z')
+
+
+def _require_name(toks, token):
+    if token is None:
+        toks.fail('missing function name at end of %s' % all_toks)
+    if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
+        toks.fail('expected function name but got %s' % token)
+    return token
