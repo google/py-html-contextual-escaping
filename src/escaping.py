@@ -296,7 +296,7 @@ def _marshal_json_obj(obj):
     if hasattr(obj, 'to_json'):
         try:
             return obj.to_json()
-        except (StandardError, Warning), e:
+        except (StandardError, Warning):
             pass
     elif hasattr(obj, '__unicode__'):
         return unicode(obj)
