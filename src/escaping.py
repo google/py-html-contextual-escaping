@@ -624,7 +624,7 @@ _FILTER_FOR_FILTER_URL = re.compile(
 
 _FILTER_FOR_FILTER_HTML_ATTRIBUTE = re.compile(
     r'(?i)^(?!style|on|action|archive|background|cite|classid|codebase|data'
-    r'|dsync|href|longdesc|src|usemap)(?:[a-z0-9_$:-]*|dir=(?:ltr|rtl))$')
+    r'|dsync|href|longdesc|src|usemap)(?:[a-z0-9_$:-]+|dir=(?:ltr|rtl))$')
 
 _FILTER_FOR_FILTER_HTML_ELEMENT_NAME = re.compile(
     r'(?i)^(?!script|style|title|textarea|xmp|no)[a-z0-9_$:-]*$')
