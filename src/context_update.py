@@ -88,39 +88,23 @@ def context_union(context0, context1):
         return context0
 
     if context0 == ((context1 & ~JS_CTX_ALL) | js_ctx_of(context0)):
+        # The contexts differ only by JS_CTX_*
         return (context0 & ~JS_CTX_ALL) | JS_CTX_UNKNOWN
 
     url_part_0 = url_part_of(context0)
     if context0 == ((context1 & ~URL_PART_ALL) | url_part_0):
+        # The contexts differ only by URL_PART
         return (context0 & ~URL_PART_ALL) | URL_PART_UNKNOWN
 
-    # Order by state so that we don't have to duplicate tests below.
-    state0, state1 = state_of(context0), state_of(context1)
-    if state0 > state1:
-        context0, context1 = context1, context0
-        state0, state1 = state1, state0
-
-    # If we start in a tag name and end between attributes, then treat us as
-    # between attributes.
-    # This handles <b{if $bool} attrName="value"{/if}>.
-    if state0 == STATE_TAG_NAME and state1 == STATE_TAG:
-        # We do not need to compare element_type_of(a) and element_type_of(b)
-        # since, in HTML_TAG_NAME, there is no tag name so no loss of
-        # information.
-        return context1
-
-    if (state0 == STATE_TAG
-        and element_type_of(context0) == element_type_of(context1)):
-        # If one branch is waiting for an attribute name and the other is
-        # waiting for an equal sign before an attribute value, then commit to
-        # the view that the attribute name was a valueless attribute and
-        # transition to a state waiting for another attribute name or the end
-        # of a tag.
-        if (state1 == STATE_ATTR_NAME
-            # In an attribute value ended by a delimiter.
-            or delim_type_of(context1) == DELIM_SPACE_OR_TAG_END):
-            # TODO: do we need to require a space before any new attribute name?
-            return context0
+    # Allow a nudged context to join with an unnudged one.
+    # This means that
+    #   <p title={{if .C}}{{.}}{{end}}
+    # ends in an unquoted value state even though the else branch
+    # ends in stateBeforeValue.
+    ncontext0 = context_before_dynamic_value(context0)
+    ncontext1 = context_before_dynamic_value(context1)
+    if context0 != ncontext0 or context1 != ncontext1:
+        return context_union(ncontext0, ncontext1)
 
     return STATE_ERROR
 
@@ -135,17 +119,38 @@ def context_before_dynamic_value(context):
         <a href={{if ...}}"..."{{else}}"..."{{/if}}>
     which was derived from production code.
 
-    But we need to force epsilon transitions to happen consistentky before
+    Parsing:
+        <a href=
+    will end in context STATE_BEFORE_VALUE | ATTR_URL, but parsing another char:
+        <a href=x
+    will end in context STATE_URL | DELIM_SPACE_OR_TAG_END | ...
+    There are two transitions that happen when the 'x' is seen:
+    (1) Transition from a before-value state to a start-of-value state without
+        consuming any character.
+    (2) Consume 'x' and transition past the first value character.
+    In this case, nudging produces the context after (1) happens.
+
+    We need to force epsilon transitions to happen consistently before
     a dynamic value is considered as in
-       <a href=${x}>
+        <a href=${x}>
     where we consider $x as happening in an unquoted attribute value context,
     not as occuring before an attribute value.
     """
+
     state = state_of(context)
-    if state == STATE_BEFORE_VALUE:
+    if state in (STATE_TAG, STATE_TAG_NAME):
+        # In "<foo {{.}}", the hole should be filled with an attribute.
+        context = (context & ~STATE_ALL) | STATE_ATTR_NAME
+    elif state == STATE_BEFORE_VALUE:
+        # In "<foo bar={{.}}", the hole should be filled with an unquoted
+        # value.
         context = context_after_attr_delimiter(
-                element_type_of(context), attr_type_of(context),
-                DELIM_SPACE_OR_TAG_END)
+            element_type_of(context), attr_type_of(context),
+            DELIM_SPACE_OR_TAG_END)
+    elif state == STATE_AFTER_NAME:
+        # In "<foo bar {{.}}", the hole should be filled with an attribute name.
+        context = (context & ~(STATE_ALL | ATTR_ALL)) | (
+            STATE_ATTR_NAME | ATTR_NONE)
     return context
 
 
@@ -858,18 +863,18 @@ def _process_next_token(text, context):
         num_consumed = earliest_match.end(0)
         next_context = earliest_transition.compute_next_context(
             context, earliest_match)
+        normalized_text = earliest_transition.raw_text(earliest_match)
     else:
         num_consumed = len(text)
         next_context = STATE_ERROR
+        normalized_text = text
 
     if not num_consumed and state_of(next_context) == state_of(context):
         # Infinite loop.
         raise Exception('inf loop. for %r in %s'
                         % (text, debug.context_to_string(context)))
 
-    return (num_consumed,
-            next_context,
-            earliest_transition.raw_text(earliest_match))
+    return (num_consumed, next_context, normalized_text)
 
 
 def process_raw_text(raw_text, context):
