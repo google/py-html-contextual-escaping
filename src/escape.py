@@ -50,14 +50,15 @@ def escape(name_to_body, public_template_names, start_state=context.STATE_TEXT):
             # Templates should start and end in the same context.
             # Otherwise concatenation of the output from safe templates is not
             # safe.
-            analyzer.warn(
+            analyzer.error(
+                None,
                 'template %s does not end in the same context it starts' % name)
             has_errors = True
 
-    if not has_errors:
-        analyzer.rewrite()
-    else:
-        raise Exception('\n'.join(analyzer.warnings))
+    if has_errors:
+        raise EscapeError('\n'.join(analyzer.errors))
+
+    analyzer.rewrite()
 
 
 class _Analyzer(trace_analysis.Analyzer):
@@ -88,21 +89,25 @@ class _Analyzer(trace_analysis.Analyzer):
         # from the original.
         self.calls = {}
         # Messages that explain failure to escape.
-        self.warnings = []
+        self.errors = []
 
-    def warn(self, msg):
+    def error(self, debug_hint, msg):
         """Queues a message explaining a problem noticed during escaping."""
-        self.warnings.append(msg)
+        if debug_hint:
+            msg = '%s: %s' % (debug_hint, msg)
+        self.errors.append(msg)
 
     def step(self, start_state, step_value, debug_hint=None):
+        if context.is_error_context(start_state):
+            # Simplifies error checking below.
+            return start_state
         if hasattr(step_value, 'to_raw_content'):
             raw_content = step_value.to_raw_content()
             if raw_content is not None:
                 end_state, new_content = context_update.process_raw_text(
                     raw_content, start_state)
-                if (context.is_error_context(end_state)
-                    and not context.is_error_context(start_state)):
-                    self.warn('bad content in %s: `%s`' % (
+                if context.is_error_context(end_state):
+                    self.error(debug_hint, 'bad content in %s: `%s`' % (
                         debug.context_to_string(start_state), raw_content))
                 if new_content != raw_content:
                     self.text_values[step_value] = new_content
@@ -110,20 +115,34 @@ class _Analyzer(trace_analysis.Analyzer):
         if hasattr(step_value, 'to_pipeline'):
             pipeline = step_value.to_pipeline()
             if pipeline is not None:
-                state, esc_modes = (
+                end_state, esc_modes = (
                     context_update.escaping_mode_for_hole(start_state))
                 self.interps[step_value] = pipeline, esc_modes
-                return state
+                if context.is_error_context(end_state):
+                    self.error(debug_hint, 'hole cannot appear in %s' % (
+                        debug.context_to_string(start_state)))
+                return end_state
         if hasattr(step_value, 'to_callee'):
             callee = step_value.to_callee()
             if callee is not None:
                 end_ctx = self.external_call(callee, start_state, debug_hint)
                 self.calls[step_value] = start_state
+                # rely on external_call to explain failure.
                 return end_ctx
         return start_state
 
     def join(self, states, debug_hint=None):
-        return reduce(context_update.context_union, states)
+        out_state = reduce(context_update.context_union, states)
+        if context.is_error_context(out_state):
+            # Report an error only if none was reported when the states were
+            # produced.
+            for state in states:
+                if context.is_error_context(state):
+                    return out_state
+            self.error(debug_hint, 'branches end in incompatible contexts: %s'
+                       % ', '.join([debug.context_to_string(state)
+                                    for state in states]))
+        return out_state
 
     def external_call(self, tmpl_name, start_ctx, debug_hint=None):
         """
@@ -138,7 +157,7 @@ class _Analyzer(trace_analysis.Analyzer):
             return end_context
         body = self.name_to_body.get(tmpl_name)
         if body is None:
-            self.warn('%sNo such template %s' % (debug_hint or '', tmpl_name))
+            self.error(debug_hint, 'No such template %s' % tmpl_name)
             return context.STATE_ERROR
         if start_ctx != self.start_state:
             # Derive a copy so that calls and pipelines can be written
@@ -148,8 +167,10 @@ class _Analyzer(trace_analysis.Analyzer):
             start_ctx, tmpl_name, body, debug_hint)
 
     def no_steady_state(self, states, debug_hint=None):
-        self.warn('%sloop oscillates between states (%s)' % (
-            debug_hint or '',
+        for state in states:
+            if context.is_error_context(state):
+                return state
+        self.error(debug_hint, 'loop oscillates between states (%s)' % (
             ', '.join([debug.context_to_string(state) for state in states])))
         return context.STATE_ERROR
 
@@ -164,11 +185,10 @@ class _Analyzer(trace_analysis.Analyzer):
         if problems is not None:
             if not context.is_error_context(ctx):
                 # We have not explained the problem yet.
-                self.warn(
-                    "%scannot compute output context for template %s in %s" % (
-                        debug_hint or '', tmpl_name,
-                        debug.context_to_string(start_ctx)))
-            self.warnings.extend(problems)
+                self.error(debug_hint,
+                    "cannot compute output context for template %s in %s" % (
+                        tmpl_name, debug.context_to_string(start_ctx)))
+            self.errors.extend(problems)
             return context.STATE_ERROR
         return ctx
 
@@ -200,7 +220,7 @@ class _Analyzer(trace_analysis.Analyzer):
             # just use end_ctx.
             or (key in self.called and ctx != end_ctx)):
             self.templates[key] = (body, context.STATE_ERROR)
-            return end_ctx, analyzer.warnings
+            return end_ctx, analyzer.errors
 
         # Copy inferences and pending changes from analyzer back into self.
         _copyinto(self.templates, analyzer.templates)
@@ -208,7 +228,7 @@ class _Analyzer(trace_analysis.Analyzer):
         _copyinto(self.text_values, analyzer.text_values)
         _copyinto(self.interps, analyzer.interps)
         _copyinto(self.calls, analyzer.calls)
-        _copyinto(self.warnings, analyzer.warnings)
+        _copyinto(self.errors, analyzer.errors)
         self.templates[key] = (body, end_ctx)
         return end_ctx, None
 
@@ -361,3 +381,12 @@ def _copyinto(dest, src):
 _CANON_NAMES = {
     'escape_html_attribute': 'escape_html',
     }
+
+
+class EscapeError(BaseException):
+    """
+    A failure to escape a template or templates.
+    """
+
+    def __init__(self, msg):
+        BaseException.__init__(self, msg)
