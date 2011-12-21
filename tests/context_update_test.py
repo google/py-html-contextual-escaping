@@ -1208,17 +1208,17 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "conditional valueless attr name",
             '<input{{if .T}} checked{{end}} name=n>',
-            '<input checked name=n>',
+            '<input checked name="n">',
         ),
         (
             "conditional dynamic valueless attr name 1",
             '<input{{if .T}} {{"checked"}}{{end}} name=n>',
-            '<input checked name=n>',
+            '<input checked name="n">',
         ),
         (
             "conditional dynamic valueless attr name 2",
             '<input {{if .T}}{{"checked"}} {{end}}name=n>',
-            '<input checked name=n>',
+            '<input checked name="n">',
         ),
         (
             "dynamic attribute name",
@@ -1283,7 +1283,7 @@ class ContextUpdateTest(unittest.TestCase):
                 env = template.parse_templates('test', test_input, 'main')
                 escape.escape(env.templates, ('main',))
                 got = env.with_data(data).sexecute('main')
-            except Exception:
+            except:
                 print >> sys.stderr, '\ntest_escape %s:\n%s\n' % (
                     name, test_input)
                 if env is not None:
@@ -1476,29 +1476,29 @@ class ContextUpdateTest(unittest.TestCase):
         # Error cases.
         (
             "{{if .Cond}}<a{{end}}",
-            "z:1: {{if}} branches",
+            "z:1: {{if}}: branches",
         ),
         (
             "{{if .Cond}}\n{{else}}\n<a{{end}}",
-            "z:1: {{if}} branches",
+            "z:1: {{if}}: branches",
         ),
         (
             # Missing quote in the else branch.
             r'''{{if .Cond}}<a href="foo">{{else}}<a href="bar>{{end}}''',
-            "z:1: {{if}} branches",
+            "z:1: {{if}}: branches",
         ),
         (
             # Different kind of attribute: href implies a URL.
             "<a {{if .Cond}}href='{{else}}title='{{end}}{{.X}}'>",
-            "z:1: {{if}} branches",
+            "z:1: {{if}}: branches",
         ),
         (
             "\n{{with .X}}<a{{end}}",
-            "z:2: {{with}} branches",
+            "z:2: {{with}}: branches",
         ),
         (
             "\n{{with .X}}<a>{{else}}<a{{end}}",
-            "z:2: {{with}} branches",
+            "z:2: {{with}}: branches",
         ),
         (
             "{{range .Items}}<a{{end}}",
@@ -1597,9 +1597,9 @@ class ContextUpdateTest(unittest.TestCase):
         for test_input, want in tests:
             got = None
             try:
-                env = template.parse_templates('test', test_input, 't')
+                env = template.parse_templates('z', test_input, 't')
                 env = escape.escape(env.templates, ('t',))
-            except Exception, err:
+            except escape.EscapeError, err:
                 got = str(err)
             if want is None:
                 if got is not None:
@@ -1712,4 +1712,12 @@ class ContextUpdateTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    if len(sys.argv) == 2 and '-' == sys.argv[1]:
+        def _tmpls_from_stdin():
+            code = sys.stdin.read().decode('UTF-8')
+            env = template.parse_templates('-', code, 'main')
+            escape.escape(env.templates, ('main',))
+            print env.sexecute('main')
+        _tmpls_from_stdin()
+    else:
+        unittest.main()
