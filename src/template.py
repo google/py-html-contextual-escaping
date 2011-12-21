@@ -414,7 +414,7 @@ class WithNode(_BlockNode):
             else_end = self.else_clause.reduce_traces(start_state, analyzer)
         return analyzer.join(
             (with_end, else_end),
-            debug_hint='%s:%s' % (self.loc, self.block_type()))
+            debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
 
 
 class IfNode(_BlockNode):
@@ -439,7 +439,7 @@ class IfNode(_BlockNode):
             else_end = self.else_clause.reduce_traces(start_state, analyzer)
         return analyzer.join(
             (then_end, else_end),
-            debug_hint='%s:%s' % (self.loc, self.block_type()))
+            debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
 
 class RangeNode(_BlockNode):
     """Loop."""
@@ -467,10 +467,10 @@ class RangeNode(_BlockNode):
         if once_end != twice_end:
             return analyzer.no_steady_state(
                 (once_end, twice_end),
-                debug_hint='%s:%s' % (self.loc, self.block_type()))
+                debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
         return analyzer.join(
             (zero_end, once_end),
-            debug_hint='%s:%s' % (self.loc, self.block_type()))
+            debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
 
 
 class ListNode(Node):
@@ -954,6 +954,9 @@ _NUMBER = re.compile(
 
 
 def _require_name(toks, token):
+    """
+    Fails if the given token is not an identifier.
+    """
     if token is None:
         toks.fail('missing function name at end of input')
     if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
