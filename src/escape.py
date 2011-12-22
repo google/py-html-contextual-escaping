@@ -115,8 +115,8 @@ class _Analyzer(trace_analysis.Analyzer):
                             debug.context_to_string(error_ctx), error_text))
                     elif new_content != raw_content:
                         self.text_values[step_value] = new_content
-                except context_update.ContextUpdateFailure, e:
-                    self.error(debug_hint, str(e))
+                except context_update.ContextUpdateFailure, err:
+                    self.error(debug_hint, str(err))
                     end_state = context.STATE_ERROR
                 return end_state
         if hasattr(step_value, 'to_pipeline'):

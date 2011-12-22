@@ -649,7 +649,7 @@ _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX = {
     "\x0a": "\\n",
     "\x0c": "\\f",
     "\x0d": "\\r",
-    "\/": "\\\/",
+    "/": "\\/",
     "\\": "\\\\",
     }
 
@@ -690,23 +690,23 @@ _MATCHER_FOR_ESCAPE_HTML_DQ_ONLY = re.compile(r'[\x00&"<>]')
 _MATCHER_FOR_NORMALIZE_HTML = re.compile(r'[\x00"\x27<>]')
 
 _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
-    ur'[\x00\x08-\x0d"&\x27\/<=>\\\x85\u2028\u2029]')
+    ur'[\x00\x08-\x0d"&\x27+/<=>\\\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_STRING = re.compile(
-    ur'[\x00\x08-\x0d"&\x27\/<=>\x85\u2028\u2029]|\\(?![^\n\r\u2028\u2029])')
+    ur'[\x00\x08-\x0d"&\x27+/<=>\x7f\x85\u2028\u2029]|\\(?![^\n\r\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
-    ur'[\x00\x08-\x0d"$&-\/:<-?\[-^\x7b-\x7d\x85\u2028\u2029]')
+    ur'[\x00\x08-\x0d"$&-+\--/:<-?\[-^\x7b-\x7d\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_REGEX = re.compile(
-    ur'[\x00\x08-\x0d"$&-\/:<-?\[\]-^\x7b-\x7d\x85\u2028\u2029]'
+    ur'[\x00\x08-\x0d"$&-+\--/:<-?\[\]-^\x7b-\x7d\x7f\x85\u2028\u2029]'
     ur'|\\(?![^\n\r\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
-    ur'[\x00\x08-\x0d"&-*\/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
+    ur'[\x00\x08-\x0d"&-*/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
 
 _FILTER_FOR_FILTER_URL = re.compile(
-    r'(?i)^(?:(?:https?|mailto):|[^&:\/?#]*(?:[\/?#]|$))')
+    r'(?i)^(?:(?:https?|mailto):|[^&:/?#]*(?:[/?#]|$))')
 
 _FILTER_FOR_FILTER_HTML_ATTRIBUTE = re.compile(
     r'(?i)^(?!style|on|action|archive|background|cite|classid|codebase|data'
@@ -766,7 +766,7 @@ def _filter_element_name_helper(value):
 
 # Matches all tags, HTML comments, and DOCTYPEs in tag soup HTML.
 _HTML_TAG_REGEX = re.compile(
-    r'(?i)<(?:!|\/?[a-z])(?:[^>\x27"]|"[^"]*"|\x27[^\x27]*\x27)*>')
+    r'(?i)<(?:!|/?[a-z])(?:[^>\x27"]|"[^"]*"|\x27[^\x27]*\x27)*>')
 
 SANITIZER_FOR_ESC_MODE = [None for _ in xrange(0, _COUNT_OF_ESC_MODES)]
 SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_HTML] = escape_html

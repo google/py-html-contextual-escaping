@@ -9,70 +9,9 @@ from context import *
 import debug
 import escaping
 import html
+import js
 import re
 import StringIO
-
-
-_REGEX_PRECEDER_KEYWORDS = set([
-    "break", "case", "continue", "delete", "do", "else", "finally",
-    "instanceof", "return", "throw", "try", "typeof"])
-
-def is_regex_preceder(js_tokens):
-    """
-    True iff a slash after the given run of non-whitespace tokens
-    starts a regular expression instead of a div operator : (/ or /=).
-
-    This fails on some valid but nonsensical JavaScript programs like
-    x = ++/foo/i which is quite different than x++/foo/i, but is not known to
-    fail on any known useful programs.
-    It is based on the draft JavaScript 2.0 lexical grammar at
-    (http://www.mozilla.org/js/language/js20-2000-07/rationale/syntax.html)
-    and requires one token of lookbehind.
-
-    js_tokens - A run of non-whitespace, non-comment, non string
-    tokens not including the '/' character.  Non-empty.
-    """
-
-    # Tokens that precede a regular expression in JavaScript.
-    # "!", "!=", "!==", "#", "%", "%=", "&", "&&",
-    # "&&=", "&=", "(", "*", "*=", "+", "+=", ",",
-    # "-", "-=", "->", ".", "..", "...", "/", "/=",
-    # ":", "::", ";", "<", "<<", "<<=", "<=", "=",
-    # "==", "===", ">", ">=", ">>", ">>=", ">>>",
-    # ">>>=", "?", "@", "[", "^", "^=", "^^", "^^=",
-    # "{", "|", "|=", "||", "||=", "~",
-    # "break", "case", "continue", "delete", "do",
-    # "else", "finally", "instanceof", "return",
-    # "throw", "try", "typeof"
-
-    js_tokens_len = len(js_tokens)
-    last_char = js_tokens[-1]
-    if last_char == '+' or last_char == '-':
-        # ++ and -- are not
-        sign_start = js_tokens_len - 1
-        # Count the number of adjacent dashes or pluses.
-        while sign_start > 0 and js_tokens[sign_start - 1] == last_char:
-            sign_start -= 1
-        num_adjacent = js_tokens_len - sign_start
-        # True for odd numbers since "---" is the same as "-- -".
-        # False for even numbers since "----" is the same as "-- --" which ends
-        # with a decrement, not a minus sign.
-        return (num_adjacent & 1) == 1
-    elif last_char == '.':
-        if js_tokens_len == 1:
-            return True
-        after_dot = js_tokens[-2]
-        return not ("0" <= after_dot <= "9")
-    elif last_char == '/':  # Match a div op, but not a regexp.
-        return js_tokens_len <= 2
-    else:
-        # [:-?] matches ':', ';', '<', '=', '>', '?'
-        # [{-~] matches '{', '|', '}', '~'
-        if re.search(r'[#%&(*,:-?\[^{-~]', last_char):
-            return True
-        # Look for one of the keywords above.
-        word = re.search(r'[\w$]+$', js_tokens)
-        return (word and word.group(0)) in _REGEX_PRECEDER_KEYWORDS
 
 
 def context_union(context0, context1):
@@ -386,11 +325,11 @@ class _SlashTransition(_Transition):
         _Transition.__init__(self, regex)
 
     def compute_next_context(self, prior, match):
-        js_slash = js_ctx_of(prior)
-        if js_slash == JS_CTX_DIV_OP:
+        js_ctx = js_ctx_of(prior)
+        if js_ctx == JS_CTX_DIV_OP:
             return ((prior & ~(STATE_ALL | JS_CTX_ALL))
                     | STATE_JS | JS_CTX_REGEX)
-        elif js_slash == JS_CTX_REGEX:
+        elif js_ctx == JS_CTX_REGEX:
             return (prior & ~(STATE_ALL | JS_CTX_ALL)) | STATE_JSREGEXP
         else:
             raise ContextUpdateFailure(
@@ -408,11 +347,7 @@ class _JsPuncTransition(_Transition):
         _Transition.__init__(self, regex)
 
     def compute_next_context(self, prior, match):
-        if is_regex_preceder(match.group(0)):
-            js_slash = JS_CTX_REGEX
-        else:
-            js_slash = JS_CTX_DIV_OP
-        return (prior & ~JS_CTX_ALL) | js_slash
+        return js.next_js_ctx(match.group(0), prior)
 
 
 class _TransitionToSelf(_Transition):
@@ -701,8 +636,7 @@ _TRANSITIONS[STATE_JS] = (
     _TransitionToJsString(r'[\']', STATE_JSSQ_STR),
     _SlashTransition(r'/'),
     # Shuffle words, punctuation (besides /), and numbers off to an
-    # analyzer which does a quick and dirty check to update
-    # is_regex_preceder.
+    # analyzer which uses is_regex_preceder to determine what '/' means.
     _JsPuncTransition(r'(?i)(?:[^<\/\"\'\s\\]|<(?!\/script))+'),
     _TransitionToSelf(r'\s+'),  # Space
     _SCRIPT_TAG_END,
