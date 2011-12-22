@@ -143,6 +143,8 @@ def esc_mode_for_hole(context_before):
     ctx = context.force_epsilon_transition(context_before)
     state, url_part = context.state_of(ctx), context.url_part_of(ctx)
     esc_modes = [ESC_MODE_FOR_STATE[state]]
+    problem = None
+
     if url_part == context.URL_PART_NONE:
         # Make sure that at the start of a URL, we filter out dangerous
         # protocols.
@@ -159,6 +161,9 @@ def esc_mode_for_hole(context_before):
             esc_modes[0] = ESC_MODE_NORMALIZE_URL
     elif url_part == context.URL_PART_QUERY_OR_FRAG:
         esc_modes[0] = ESC_MODE_ESCAPE_URL
+    elif url_part == context.URL_PART_UNKNOWN:
+        ctx = context.STATE_ERROR
+        problem = 'hole appears in an ambiguous URL context'
 
     if state == context.STATE_JS:
         ctx = (ctx & ~context.JS_CTX_ALL) | context.JS_CTX_DIV_OP
@@ -182,7 +187,7 @@ def esc_mode_for_hole(context_before):
         else:
             last = curr
             i += 1
-    return ctx, tuple(esc_modes)
+    return ctx, tuple(esc_modes), problem
 
 
 def escape_html(value):
