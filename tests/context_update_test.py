@@ -754,7 +754,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "jsStrValue",
             "<button onclick='alert({{.H}})'>",
-            r"""<button onclick='alert(&#34;\x3cHello\x3e&#34;)'>""",
+            r"<button onclick='alert(&#34;\x3cHello\x3e&#34;)'>",
         ),
         (
             "jsNumericValue",
@@ -780,7 +780,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "jsObjValueScript",
             "<script>alert({{.A}})</script>",
-            r"""<script>alert(["\x3ca\x3e","\x3cb\x3e"])</script>""",
+            r'<script>alert(["\x3ca\x3e","\x3cb\x3e"])</script>',
         ),
         (
             "jsObjValueNotOverEscaped",
@@ -883,7 +883,7 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "styleObfuscatedExpressionBlocked",
-            r"""<p style="width: {{"  e\78preS\0Sio/**/n(alert(1337))"}}">""",
+            r'<p style="width: {{"  e\78preS\0Sio/**/n(alert(1337))"}}">',
             '<p style="width: zSafehtmlz">',
         ),
         (
@@ -893,7 +893,7 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "styleObfuscatedMozBindingBlocked",
-            r"""<p style="{{"  -mo\7a-B\0I/**/nding(alert(1337))"}}: ...">""",
+            r'<p style="{{"  -mo\7a-B\0I/**/nding(alert(1337))"}}: ...">',
             '<p style="zSafehtmlz: ...">',
         ),
         (
@@ -1341,7 +1341,7 @@ class ContextUpdateTest(unittest.TestCase):
                 # "<b" is not a full tag.
                 "helper": '{{"<a>"}}<b',
             },
-            r"""<a onclick='a = &#34;\x3ca\x3e&#34;&lt;b;'>""",
+            r"<a onclick='a = &#34;\x3ca\x3e&#34;&lt;b;'>",
         ),
         # A recursive template that ends in its start context.
         (
