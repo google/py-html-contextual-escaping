@@ -559,20 +559,20 @@ _TRANSITIONS[STATE_TEXT] = (
                          "&lt;"),
     _ToTransition(r'<', STATE_HTML_BEFORE_TAG_NAME),
     )
-_TRANSITIONS[ STATE_RCDATA ] = (
+_TRANSITIONS[STATE_RCDATA] = (
     _RcdataEndTagTransition(r'</(\w+)\b'),
     _NormalizeTransition(_TransitionToSelf(r'<'), "&lt;"),
     _TRANSITION_TO_SELF,
     )
-_TRANSITIONS[ STATE_HTML_BEFORE_TAG_NAME ] = (
+_TRANSITIONS[STATE_HTML_BEFORE_TAG_NAME] = (
     _ToTransition(r'^[A-Za-z]+', STATE_TAG_NAME),
     _ToTransition(r'^(?=[^A-Za-z])', STATE_TEXT),
     )
-_TRANSITIONS[ STATE_TAG_NAME ] = (
+_TRANSITIONS[STATE_TAG_NAME] = (
     _TransitionToSelf(r'^[A-Za-z0-9:-]*(?:[A-Za-z0-9]|$)'),
     _ToTagTransition(r'^(?=[\/\s>])', ELEMENT_NONE),
     )
-_TRANSITIONS[ STATE_TAG ] = (
+_TRANSITIONS[STATE_TAG] = (
     # Allows "data-foo" and other dashed attribute names, but
     # intentionally disallows "--" as an attribute name so that a tag ending
     # after a value-less attribute named "--" cannot be confused with a HTML
@@ -581,18 +581,18 @@ _TRANSITIONS[ STATE_TAG ] = (
     _TagDoneTransition(r'^\s*\/?>'),
     _TransitionToSelf(r'^\s+$'),
     )
-_TRANSITIONS[ STATE_ATTR_NAME ] = (
+_TRANSITIONS[STATE_ATTR_NAME] = (
     _TransitionToSelf(r'[A-Za-z0-9-]+'),
     # For a value-less attribute, make an epsilon transition back to the tag
     # body context to look for a tag end or another attribute name.
     _TransitionToState(r'^', STATE_AFTER_NAME),
     )
-_TRANSITIONS[ STATE_AFTER_NAME ] = (
+_TRANSITIONS[STATE_AFTER_NAME] = (
     _TransitionToState(r'^\s*=', STATE_BEFORE_VALUE),
     _TransitionToSelf(r'^\s+'),
     _TransitionBackToTag(r'^'),
     )
-_TRANSITIONS[ STATE_BEFORE_VALUE ] = (
+_TRANSITIONS[STATE_BEFORE_VALUE] = (
     _TransitionToAttrValue(r'^\s*["]', DELIM_DOUBLE_QUOTE),
     _TransitionToAttrValue(r'^\s*\'', DELIM_SINGLE_QUOTE),
     _TransitionToAttrValue(r'^(?=[^\"\'\s>])',  # Unquoted value start.
@@ -606,16 +606,16 @@ _TRANSITIONS[ STATE_BEFORE_VALUE ] = (
     _TransitionBackToTag(r'^(?=>|\s+[A-Za-z][A-Za-z0-9-]*\s*=)'),
     _TransitionToSelf(r'^\s+'),
     )
-_TRANSITIONS[ STATE_HTMLCMT ] = (
+_TRANSITIONS[STATE_HTMLCMT] = (
     _NormalizeTransition(_ToTransition(r'-->', STATE_TEXT), "", True),
     _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
-_TRANSITIONS[ STATE_ATTR ] = (
+_TRANSITIONS[STATE_ATTR] = (
     _TRANSITION_TO_SELF,
     )
 # The CSS transitions below are based on
 # http://www.w3.org/TR/css3-syntax/#lexical
-_TRANSITIONS[ STATE_CSS ] = (
+_TRANSITIONS[STATE_CSS] = (
     _NormalizeTransition(
         _TransitionToState(r'\/\*', STATE_CSSBLOCK_CMT),
         " "),
@@ -628,7 +628,7 @@ _TRANSITIONS[ STATE_CSS ] = (
     _STYLE_TAG_END,
     _TRANSITION_TO_SELF,
     )
-_TRANSITIONS[ STATE_CSSBLOCK_CMT ] = (
+_TRANSITIONS[STATE_CSSBLOCK_CMT] = (
     _NormalizeTransition(
         _TransitionToState(r'\*\/', STATE_CSS), "", True),
     _NormalizeTransition(
@@ -636,7 +636,7 @@ _TRANSITIONS[ STATE_CSSBLOCK_CMT ] = (
         "</style", True),
     _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
-_TRANSITIONS[ STATE_CSSLINE_CMT ] = (
+_TRANSITIONS[STATE_CSSLINE_CMT] = (
     _NormalizeTransition(
         _TransitionToState(r'[\n\f\r]', STATE_CSS),
         "\n", True),
@@ -645,7 +645,7 @@ _TRANSITIONS[ STATE_CSSLINE_CMT ] = (
         "</style", True),
     _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
-_TRANSITIONS[ STATE_CSSDQ_STR ] = (
+_TRANSITIONS[STATE_CSSDQ_STR] = (
     _TransitionToState(r'["]', STATE_CSS),
     # Line continuation or escape.
     _TransitionToSelf(r'\\(?:\r\n?|[\n\f\"])'),
@@ -654,7 +654,7 @@ _TRANSITIONS[ STATE_CSSDQ_STR ] = (
     _STYLE_TAG_END,  # TODO: Make this an error transition?
     _TRANSITION_TO_SELF,
     )
-_TRANSITIONS[ STATE_CSSSQ_STR ] = (
+_TRANSITIONS[STATE_CSSSQ_STR] = (
     _TransitionToState(r'[\']', STATE_CSS),
     # Line continuation or escape.
     _TransitionToSelf(r'\\(?:\r\n?|[\n\f\'])'),
@@ -662,13 +662,13 @@ _TRANSITIONS[ STATE_CSSSQ_STR ] = (
     _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,  # TODO: Make this an error transition?
     )
-_TRANSITIONS[ STATE_CSS_URL ] = (
+_TRANSITIONS[STATE_CSS_URL] = (
     _TransitionToState(r'[\\)\s]', STATE_CSS),
     _CSSURL_PART_TRANSITION,
     _TransitionToState(r'[\"\']', STATE_ERROR),
     _STYLE_TAG_END,
     )
-_TRANSITIONS[ STATE_CSSSQ_URL ] = (
+_TRANSITIONS[STATE_CSSSQ_URL] = (
     _TransitionToState(r'[\']', STATE_CSS),
     _CSSURL_PART_TRANSITION,
     # Line continuation or escape.
@@ -676,7 +676,7 @@ _TRANSITIONS[ STATE_CSSSQ_URL ] = (
     _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,
     )
-_TRANSITIONS[ STATE_CSSDQ_URL ] = (
+_TRANSITIONS[STATE_CSSDQ_URL] = (
     _TransitionToState(r'["]', STATE_CSS),
     _CSSURL_PART_TRANSITION,
     # Line continuation or escape.
@@ -684,7 +684,7 @@ _TRANSITIONS[ STATE_CSSDQ_URL ] = (
     _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,
     )
-_TRANSITIONS[ STATE_JS ] = (
+_TRANSITIONS[STATE_JS] = (
     _NormalizeTransition(
         _TransitionToState(r'/[*]', STATE_JSBLOCK_CMT),
         # We need at least one space to prevent blurring of boundaries.
@@ -711,20 +711,20 @@ _TRANSITIONS[ STATE_JS ] = (
     _TransitionToSelf(r'\s+'),  # Space
     _SCRIPT_TAG_END,
     )
-_TRANSITIONS[ STATE_JSBLOCK_CMT ] = (
+_TRANSITIONS[STATE_JSBLOCK_CMT] = (
     _NormalizeJsBlockCommentTransition(
         _TransitionToState(r'[*]/', STATE_JS)),
     _NormalizeTransition(_SCRIPT_TAG_END, "</script", True),
     _NormalizeJsBlockCommentTransition(_TRANSITION_TO_SELF),
     )
 # Line continuations are not allowed in line comments.
-_TRANSITIONS[ STATE_JSLINE_CMT ] = (
+_TRANSITIONS[STATE_JSLINE_CMT] = (
     _NormalizeTransition(_TransitionToState("[%s]" % NLS, STATE_JS),
                          "\n", True),
     _NormalizeTransition(_SCRIPT_TAG_END, "</script", True),
     _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
-_TRANSITIONS[ STATE_JSDQ_STR ] = (
+_TRANSITIONS[STATE_JSDQ_STR] = (
     _DivPreceder(r'["]'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
@@ -739,7 +739,7 @@ _TRANSITIONS[ STATE_JSDQ_STR ] = (
             "|<(?!/script)" +
         ")+"),
     )
-_TRANSITIONS[ STATE_JSSQ_STR ] = (
+_TRANSITIONS[STATE_JSSQ_STR] = (
     _DivPreceder(r'[\']'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
@@ -753,7 +753,7 @@ _TRANSITIONS[ STATE_JSSQ_STR ] = (
             "|<(?!/script)" +
         ")+"),
     )
-_TRANSITIONS[ STATE_JSREGEXP ] = (
+_TRANSITIONS[STATE_JSREGEXP] = (
     _DivPreceder(r'/'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
@@ -774,7 +774,7 @@ _TRANSITIONS[ STATE_JSREGEXP ] = (
     # javascript:, data:text/html, etc. and transition to JS instead
     # with a second layer of percent decoding triggered by a protocol
     # in (DATA, JAVASCRIPT, NONE) added to Context?
-_TRANSITIONS[ STATE_URL ] = (_URL_PART_TRANSITION,)
+_TRANSITIONS[STATE_URL] = (_URL_PART_TRANSITION,)
 
 _TRANSITIONS = tuple(_TRANSITIONS)
 
