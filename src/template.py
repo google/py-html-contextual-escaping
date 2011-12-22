@@ -373,6 +373,7 @@ class _TemplateNode(Node):
             expr_str = " %s" % self.expr
         return "{{template %s%s}}" % (self.name, expr_str)
 
+
 class _BlockNode(Node):
     """
     An abstract statement node that has an expression, a body, and an optional
@@ -462,6 +463,7 @@ class _IfNode(_BlockNode):
         return analyzer.join(
             (then_end, else_end),
             debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
+
 
 class _RangeNode(_BlockNode):
     """Loop."""
