@@ -15,7 +15,6 @@ import context
 import json
 import re
 
-
 # Encodes HTML special characters.
 ESC_MODE_ESCAPE_HTML = 0
 
@@ -654,8 +653,30 @@ _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX = {
     }
 
 def _replacer_for_js(match):
-    """A regex replacer."""
+    """A replacer for characters in JS strings and regular expressions."""
     group = match.group(0)
+    encoded = _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX.get(group)
+    if encoded is None:
+        # "\u2028" -> "\\u2028"
+        char_code = ord(group)
+        if char_code < 0x100:
+            encoded = r'\x%02x' % char_code
+        else:
+            encoded = r'\u%04x' % char_code
+        _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX[group] = encoded
+    return encoded
+
+def _replacer_for_js_escs(match):
+    """
+    A replacer for escape sequences, broken escape sequences and certain
+    characters.
+    """
+    group = match.group(0)
+    if len(group) > 1 and group[0] == '\\':
+        esc = group[1:]
+        if ('A' <= esc <= 'Z') or ('a' <= esc <= 'z') or ('0' <= esc <= '9'):
+            return group
+        group = esc
     encoded = _ESCAPE_MAP_FOR_ESCAPE_JS_STRING__AND__ESCAPE_JS_REGEX.get(group)
     if encoded is None:
         # "\u2028" -> "\\u2028"
@@ -693,14 +714,14 @@ _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&\x27+/<=>\\\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_STRING = re.compile(
-    ur'[\x00\x08-\x0d"&\x27+/<=>\x7f\x85\u2028\u2029]|\\(?![^\n\r\u2028\u2029])')
+    ur'(?s)(?:\\(.|$)|[\n\r\"\'+<=>&\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
     ur'[\x00\x08-\x0d"$&-+\--/:<-?\[-^\x7b-\x7d\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_REGEX = re.compile(
-    ur'[\x00\x08-\x0d"$&-+\--/:<-?\[\]-^\x7b-\x7d\x7f\x85\u2028\u2029]'
-    ur'|\\(?![^\n\r\u2028\u2029])')
+    # A '*' or '/' at the beginning could turn a /{{.}}/ into a comment.
+    ur'(?s)(?:^[*]|\\(.|$)|[\n\r+\"\'/<=>&\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&-*/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
@@ -738,7 +759,8 @@ def _escape_js_string_helper(value):
 
 def _normalize_js_string_helper(value):
     """ '</script>' -> '\x3c/script\x3e' """
-    return _MATCHER_FOR_NORMALIZE_JS_STRING.sub(_replacer_for_js, value)
+    # Make sure that any dangling
+    return _MATCHER_FOR_NORMALIZE_JS_STRING.sub(_replacer_for_js_escs, value)
 
 def _escape_js_regex_helper(value):
     """ '</script>' -> '\x3c\x2fscript\x3e' """
@@ -746,7 +768,7 @@ def _escape_js_regex_helper(value):
 
 def _normalize_js_regex_helper(value):
     """ '</script>' -> '\x3c/script\x3e' """
-    return _MATCHER_FOR_NORMALIZE_JS_REGEX.sub(_replacer_for_js, value)
+    return _MATCHER_FOR_NORMALIZE_JS_REGEX.sub(_replacer_for_js_escs, value)
 
 def _escape_css_string_helper(value):
     """ '</style>' -> '\3c \2f style\3e ' """

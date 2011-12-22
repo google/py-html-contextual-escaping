@@ -2,6 +2,7 @@
 
 """Testcases for module js"""
 
+import content
 import context
 import debug
 import escaping
@@ -199,6 +200,14 @@ class JsTest(unittest.TestCase):
             ("foo\xA0bar", "foo\xA0bar"),
             # Invalid unicode scalar value.
             ("foo\xed\xa0\x80bar", "foo\xed\xa0\x80bar"),
+            (content.SafeJSStr("\\r\\n"), "\\r\\n"),
+            (content.SafeJSStr("O'Reilly"), "O\\x27Reilly"),
+            # Orphaned slashes.
+            (content.SafeJSStr("foo\\r\\nbar\\"), "foo\\r\\nbar\\\\"),
+            (content.SafeJSStr("foo\\\r\nbar\\\\baz"),
+             # \\\r\n treated as a line continuation which contributes
+             # zero characters to the encoded string.
+             "foo\\r\\nbar\\\\baz"),
             )
 
         for test_input, want in tests:
