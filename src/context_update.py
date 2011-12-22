@@ -456,8 +456,7 @@ class _SlashTransition(_Transition):
             return ((prior & ~(STATE_ALL | JS_CTX_ALL))
                     | STATE_JS | JS_CTX_REGEX)
         elif js_slash == JS_CTX_REGEX:
-            return ((prior & ~(STATE_ALL | JS_CTX_ALL))
-                    | STATE_JSREGEXP | JS_CTX_NONE)
+            return (prior & ~(STATE_ALL | JS_CTX_ALL)) | STATE_JSREGEXP
         else:
             raise Exception(
                 ("Ambiguous / could be a RegExp or division.  " +
@@ -1055,6 +1054,9 @@ def escaping_mode_for_hole(context_before):
             esc_modes[0] = escaping.ESC_MODE_NORMALIZE_URL
     elif url_part == URL_PART_QUERY_OR_FRAG:
         esc_modes[0] = escaping.ESC_MODE_ESCAPE_URL
+
+    if state == STATE_JS:
+        context = (context & ~JS_CTX_ALL) | JS_CTX_DIV_OP
 
     esc_mode = esc_modes[-1]
     delim_type = delim_type_of(context)

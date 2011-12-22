@@ -212,18 +212,16 @@ def js_ctx_of(context):
     """
     return context & JS_CTX_ALL
 
-# Not in JavaScript.
-JS_CTX_NONE = 0
-
-# A slash as the next token would start a regular expression literal.
-JS_CTX_REGEX = 1 << 12
+# Not in JavaScript or in a context where the next token would start a regular
+# expression literal.
+JS_CTX_REGEX = 0 << 12
 
 # A slash as the next token would start a division operator.
-JS_CTX_DIV_OP = 2 << 12
+JS_CTX_DIV_OP = 1 << 12
 
 # We do not know what a slash as the next token would start so it is
 # an error for the next token to be a slash.
-JS_CTX_UNKNOWN = 3 << 12
+JS_CTX_UNKNOWN = 2 << 12
 
 # All of the JS following slash bits set.
 JS_CTX_ALL = 3 << 12
