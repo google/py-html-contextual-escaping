@@ -1,7 +1,43 @@
 #!/usr/bin/python
 
 """
-An implementation of enough of Go templates to enable testing.
+An implementation of enough of Go templates to allow thorough testing of
+contextual auto-escaping.
+
+To use this module:
+
+    # Parse templates.
+    env = parse_templates(Loc('/my/template/file'), file_content)
+    # Execute the templates with some data.
+    template_output = env.with_data({ 'foo': 'bar' }).sexecute()
+   
+Template definitions contain embedded commands surrounded in {{...}}.
+  {{define name}}...{{end}}            - defines a template
+  {{if expr}}...{{else}}...{{end}}     - a conditional
+  {{range expr}}...{{else}}}...{{end}} - loops over a series executing the body
+                                         with the value as the data context.
+                                         If the series is falsey/empty executes
+                                         the optional {{else}} part instead.
+  {{with expr}}...{{else}}...{{end}}   - executes the body using expr as the
+                                         data context.  If expr is falsey,
+                                         executes the optional {{else}} part
+                                         instead.
+  {{expr}}                             - emits the result of expr as output
+  {{template 'name' expr}}             - executed the named template.  If the
+                                         optional expr is present, uses that
+                                         as the data context for the template
+                                         or otherwise uses the current data
+                                         context.
+
+Template expressions can have the form:
+  Literal values: 42, -1.5, 'foo', True, False, null
+  Function calls: foo(expr, expr)
+  Pipes:          expr | foo
+
+The pipe syntax (foo | bar) is merely syntactic sugar for a call: bar(foo)
+
+The set of functions is determined by the environment.  Env().fns is a dict
+mapping function names to the python functions that implement them.
 """
 
 import cStringIO as StringIO
@@ -20,7 +56,9 @@ for _builtin_fn in escaping.SANITIZER_FOR_ESC_MODE:
 
 
 class Env(object):
-    """The environment in which a template is executed."""
+    """
+    A group of templates and the environment in which they can be executed.
+    """
 
     def __init__(self, data, fns, templates):
         self.data = data
@@ -56,6 +94,29 @@ class Env(object):
         return '\n\n'.join(
             [("{{define %s}}%s{{end}}" % (name, body))
              for (name, body) in self.templates.iteritems()])
+
+    def parse_templates(self, loc, code, name=None):
+        """
+        Augments this environment with template definitions parsed from the
+        given template source.
+
+        loc - The source code location at the start of code.
+        code - Zero or more {{define}}...{{end}} and optionally zero or more
+               statements at the end which will be treated as the body of the
+               template named name.
+        name - The name to use for the implied template definition.
+
+        For example,
+            parse_templates(..., '{{define foo}}Hello{{end}}World!', name='bar')
+        will return an environment, env, with two templates so that
+            env.sexecute('foo') == 'Hello'
+            env.sexecute('bar') == 'World!'
+
+        Returns an Env containing the builtin function definitions and
+        the parsed templates.
+        """
+        _parse_templates_into(env=env, loc=loc, code=code, name=name)
+        return self
 
 
 class Loc(object):
@@ -140,7 +201,7 @@ class ExprNode(Node):
         raise Exception()
 
 
-class TextNode(Node):
+class _TextNode(Node):
     """
     A chunk of raw text in the template's output language that was supplied
     by a template author and which is not controllable by an arbitrary user.
@@ -159,7 +220,7 @@ class TextNode(Node):
 
     def with_children(self, children):
         assert len(children) == 0
-        return TextNode(self.loc, self.text)
+        return _TextNode(self.loc, self.text)
 
     def to_raw_content(self):
         """
@@ -173,7 +234,7 @@ class TextNode(Node):
         """
         Returns a version of this node but with the given text content.
         """
-        return TextNode(self.loc, new_content)
+        return _TextNode(self.loc, new_content)
 
     def reduce_traces(self, start_state, analyzer):
         return analyzer.step(start_state, self, debug_hint=self.loc)
@@ -182,7 +243,7 @@ class TextNode(Node):
         return self.text
 
 
-class InterpolationNode(Node):
+class _InterpolationNode(Node):
     """An interpolation of an untrusted expression"""
 
     def __init__(self, loc, expr):
@@ -201,7 +262,7 @@ class InterpolationNode(Node):
 
     def with_children(self, children):
         assert(1 == len(children))
-        return InterpolationNode(self.loc, children[0])
+        return _InterpolationNode(self.loc, children[0])
 
     def to_pipeline(self):
         """
@@ -213,7 +274,7 @@ class InterpolationNode(Node):
         return Pipeline(self.expr)
 
     def with_pipeline(self, pipeline):
-        return InterpolationNode(self.loc, pipeline.expr)
+        return _InterpolationNode(self.loc, pipeline.expr)
 
     def reduce_traces(self, start_state, analyzer):
         return analyzer.step(start_state, self, debug_hint=self.loc)
@@ -222,7 +283,7 @@ class InterpolationNode(Node):
         return "{{%s}}" % self.expr
 
 
-class ReferenceNode(ExprNode):
+class _ReferenceNode(ExprNode):
     """
     An expression node (a node that execute()s to a return value)
     whose value is determined soley by property lookups on the data value.
@@ -245,13 +306,13 @@ class ReferenceNode(ExprNode):
 
     def with_children(self, children):
         assert len(children) == 0
-        return ReferenceNode(self.loc, self.properties)
+        return _ReferenceNode(self.loc, self.properties)
 
     def __str__(self):
         return ".%s" % '.'.join(self.properties)
 
 
-class CallNode(ExprNode):
+class _CallNode(ExprNode):
     """An function call"""
 
     def __init__(self, loc, name, args):
@@ -267,7 +328,7 @@ class CallNode(ExprNode):
         return self.args
 
     def with_children(self, children):
-        return CallNode(self.loc, self.name, children)
+        return _CallNode(self.loc, self.name, children)
 
     def __str__(self):
         if len(self.args) == 1:
@@ -277,7 +338,7 @@ class CallNode(ExprNode):
                 self.name, ", ".join([str(arg) for arg in self.args]))
 
 
-class LiteralNode(ExprNode):
+class _LiteralNode(ExprNode):
     """A literal value."""
 
     def __init__(self, loc, value):
@@ -294,13 +355,13 @@ class LiteralNode(ExprNode):
 
     def with_children(self, children):
         assert len(children) == 0
-        return LiteralNode(self.loc, self.value)
+        return _LiteralNode(self.loc, self.value)
 
     def __str__(self):
         return repr(self.value)
 
 
-class TemplateNode(Node):
+class _TemplateNode(Node):
     """A call to another template."""
 
     def __init__(self, loc, name, expr):
@@ -325,7 +386,7 @@ class TemplateNode(Node):
         expr = None
         if len(children) == 2:
             expr = children[1]
-        return TemplateNode(self.loc, name, expr)
+        return _TemplateNode(self.loc, name, expr)
 
     def to_callee(self):
         """
@@ -338,8 +399,8 @@ class TemplateNode(Node):
 
     def with_callee(self, callee):
         assert type(callee) is str
-        return TemplateNode(
-            self.loc, LiteralNode(self.name.loc, callee), self.expr)
+        return _TemplateNode(
+            self.loc, _LiteralNode(self.name.loc, callee), self.expr)
 
     def reduce_traces(self, start_state, analyzer):
         return analyzer.step(start_state, self, debug_hint=self.loc)
@@ -391,7 +452,7 @@ class _BlockNode(Node):
         return "{{%s %s}}%s{{end}}" % (self.block_type(), self.expr, self.body)
 
 
-class WithNode(_BlockNode):
+class _WithNode(_BlockNode):
     """Executes body in a more specific data context."""
 
     def __init__(self, loc, expr, body, else_clause):
@@ -417,7 +478,7 @@ class WithNode(_BlockNode):
             debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
 
 
-class IfNode(_BlockNode):
+class _IfNode(_BlockNode):
     """Conditional."""
 
     def __init__(self, loc, expr, body, else_clause):
@@ -441,7 +502,7 @@ class IfNode(_BlockNode):
             (then_end, else_end),
             debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
 
-class RangeNode(_BlockNode):
+class _RangeNode(_BlockNode):
     """Loop."""
 
     def __init__(self, loc, expr, body, else_clause):
@@ -473,7 +534,7 @@ class RangeNode(_BlockNode):
             debug_hint='%s: {{%s}}' % (self.loc, self.block_type()))
 
 
-class ListNode(Node):
+class _ListNode(Node):
     """The concatenation of a series of nodes."""
 
     def __init__(self, loc, elements):
@@ -488,7 +549,7 @@ class ListNode(Node):
         return self.elements
 
     def with_children(self, children):
-        return ListNode(self.loc, children)
+        return _ListNode(self.loc, children)
 
     def reduce_traces(self, start_state, analyzer):
         for element in self.elements:
@@ -501,11 +562,36 @@ class ListNode(Node):
 
 def parse_templates(loc, code, name=None):
     """
-    Parses a template definition or set of template definitions
-    to an environment.
+    Parses a template definition or set of template definitions.
 
     This is the dual of env.__str__.
+
+    loc - The source code location at the start of code.
+    code - Zero or more {{define}}...{{end}} and optionally zero or more
+           statements at the end which will be treated as the body of the
+           template named name.
+    name - The name to use for the implied template definition.
+
+    For example,
+        parse_templates(..., '{{define foo}}Hello{{end}}World!', name='bar')
+    will return an environment, env, with two templates so that
+        env.sexecute('foo') == 'Hello'
+        env.sexecute('bar') == 'World!'
+
+    Returns an Env containing the builtin function definitions and
+    the parsed templates.
     """
+
+    env = Env(None, dict(_BUILTIN_FNS), {})
+    _parse_templates_into(env, loc, code, name)
+    return env
+
+def _parse_templates_into(env, loc, code, name=None):
+    """
+    Parses a template definition or set of template definitions
+    into an existing environment.
+    """
+
     if type(loc) in (str, unicode):
         loc = Loc(loc)
     assert hasattr(loc, 'src') and hasattr(loc, 'line')
@@ -518,8 +604,6 @@ def parse_templates(loc, code, name=None):
     # White-space at the end is ignorable.
     # Code below ignores white-space at the start.
     code = code.rstrip()
-
-    env = Env(None, _BUILTIN_FNS, {})
 
     # Split src into a run of non-{{...}} tokens with
     # {{...}} constructs in-between.
@@ -568,7 +652,7 @@ def parse_templates(loc, code, name=None):
             children.append(atom)
         if len(children) == 1:
             return children[0]
-        return ListNode(loc, children)
+        return _ListNode(loc, children)
 
     def parse_atom():
         """Parses a single full statement node."""
@@ -580,13 +664,13 @@ def parse_templates(loc, code, name=None):
             r'\A\{\{(?:(if|range|with|template|end|else)\b)?(.*)\}\}\Z', token)
         if not match:
             toks.consume()
-            return TextNode(loc, token)
+            return _TextNode(loc, token)
         name = match.group(1)
         if name in ('else', 'end'):
             return None
         toks.consume()
         if not name:
-            return InterpolationNode(loc, _parse_expr(loc, token[2:-2]))
+            return _InterpolationNode(loc, _parse_expr(loc, token[2:-2]))
         if name == 'template':
             name_and_data = match.group(2)
             template_name, name_and_data = _parse_expr(
@@ -597,7 +681,7 @@ def parse_templates(loc, code, name=None):
                 # so even if there are line-breaks in name, the error messages
                 # from parsing data will point to the right line.
                 expr = _parse_expr(loc, name_and_data)
-            return TemplateNode(loc, template_name, expr)
+            return _TemplateNode(loc, template_name, expr)
         return parse_block(loc, name, _parse_expr(loc, match.group(2)))
 
     def parse_block(loc, name, expr):
@@ -608,12 +692,12 @@ def parse_templates(loc, code, name=None):
             else_clause = parse_list()
         toks.expect('{{end}}')
         if name == 'if':
-            ctor = IfNode
+            ctor = _IfNode
         elif name == 'range':
-            ctor = RangeNode
+            ctor = _RangeNode
         else:
             assert name == 'with'
-            ctor = WithNode
+            ctor = _WithNode
         return ctor(loc, expr, body, else_clause)
 
     while not toks.is_empty():
@@ -632,8 +716,6 @@ def parse_templates(loc, code, name=None):
                 define(name)
             if not toks.is_empty():
                 toks.fail('unparsed content %s' % toks)
-
-    return env
 
 
 def _parse_expr(loc, toks, consume_all=True):
@@ -675,7 +757,7 @@ def _parse_expr(loc, toks, consume_all=True):
         """
         expr = parse_atom()
         while toks.check('|'):
-            expr = CallNode(expr.loc, parse_name(), (expr,))
+            expr = _CallNode(expr.loc, parse_name(), (expr,))
         return expr
 
     def parse_atom():
@@ -699,23 +781,23 @@ def _parse_expr(loc, toks, consume_all=True):
                 # traversals leaves from data leaves us in the right place.
                 parts = ()
             toks.consume()
-            return ReferenceNode(loc, parts)
+            return _ReferenceNode(loc, parts)
         if ch0 in ('"', "'"):
             if len(token) < 2 or token[-1] != ch0:
                 toks.fail('malformed string literal %s' % token)
             toks.consume()
-            return LiteralNode(loc, unescape(token))
+            return _LiteralNode(loc, unescape(token))
         if _NUMBER.search(token):
             toks.consume()
             if _INT.search(token):
                 number = int(token)
             else:
                 number = float(token)
-            return LiteralNode(loc, number)
+            return _LiteralNode(loc, number)
         # Assume a function call or keyword value.
         name = parse_name()
         if name in _LITERAL_VALUES:
-            return LiteralNode(loc, _LITERAL_VALUES[name])
+            return _LiteralNode(loc, _LITERAL_VALUES[name])
         toks.expect('(')
         args = []
         if not toks.check(')'):
@@ -724,7 +806,7 @@ def _parse_expr(loc, toks, consume_all=True):
                 if not toks.check(','):
                     break
             toks.expect(')')
-        return CallNode(loc, name, args)
+        return _CallNode(loc, name, args)
 
     def parse_name():
         """
@@ -909,13 +991,13 @@ class Pipeline(object):
             arg = expr.args[0]
             arg_index, new_arg = walk(arg)
             if arg_index == index:
-                new_arg = CallNode(new_arg.loc, name, (new_arg,))
+                new_arg = _CallNode(new_arg.loc, name, (new_arg,))
             if arg is not new_arg:
                 expr = expr.with_children((new_arg,))
             return arg_index+1, expr
         arg_index, expr = walk(self.expr)
         if arg_index == index:  # Insertion at end.
-            expr = CallNode(expr.loc, name, (expr,))
+            expr = _CallNode(expr.loc, name, (expr,))
         self.expr = expr
 
 
@@ -926,7 +1008,7 @@ def _is_pipe(expr):
     Since template syntax allows f(x) to be written x | f, single argument
     functions are called pipeline elements.
     """
-    return isinstance(expr, CallNode) and len(expr.args) == 1
+    return isinstance(expr, _CallNode) and len(expr.args) == 1
 
 
 _LITERAL_VALUES = {

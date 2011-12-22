@@ -176,7 +176,7 @@ def context_after_attr_delimiter(el_type, attr_type, delim):
 
 # Characters that break a line in JavaScript source suitable for use in a
 # regex charset.
-NLS = u"\r\n\u2028\u2029"
+NLS = u"\n\r\u2028\u2029"
 
 def _end_of_attr_value(raw_text, delim):
     """
