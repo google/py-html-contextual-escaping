@@ -29,12 +29,19 @@ def context_to_string(ctx):
     Used in debug mode to convert a context represented as an integer to a
     diagnostic string.
     """
-    parts = [_STATE_NAMES[context.state_of(ctx)],
-             _ELEMENT_NAMES.get(context.element_type_of(ctx)),
-             _ATTR_NAMES.get(context.attr_type_of(ctx)),
-             _DELIM_NAMES.get(context.delim_type_of(ctx)),
-             _JS_CTX_NAMES.get(context.js_ctx_of(ctx)),
-             _URL_PART_NAMES.get(context.url_part_of(ctx))]
-    return "[Context %s]" % " ".join([part or 'UNKNOWN' for part in parts
-                                      if not part.endswith('_NONE')])
+    state = context.state_of(ctx)
+    element = context.element_type_of(ctx)
+    attr = context.attr_type_of(ctx)
+    delim = context.delim_type_of(ctx)
+    js_ctx = context.js_ctx_of(ctx)
+    url_part = context.url_part_of(ctx)
 
+    parts = [_STATE_NAMES[state],
+             element and _ELEMENT_NAMES[element],
+             attr and _ATTR_NAMES[attr],
+             delim and _DELIM_NAMES[delim],
+             js_ctx and _JS_CTX_NAMES[js_ctx],
+             url_part and _URL_PART_NAMES[url_part],
+             ]
+    return "[Context %s]" % " ".join(
+        [part or 'UNKNOWN' for part in parts if part])
