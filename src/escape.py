@@ -155,10 +155,10 @@ class _Analyzer(trace_analysis.Analyzer):
         and returns the context after a successful call to the template in the
         start context.
         """
-        key = (tmpl_name, start_ctx)
-        self.called.add(key)
-        if key in self.name_to_body:
-            end_context = self.name_to_body[key]
+        name_and_ctx = (tmpl_name, start_ctx)
+        self.called.add(name_and_ctx)
+        if name_and_ctx in self.templates:
+            _, end_context = self.templates[name_and_ctx]
             return end_context
         body = self.name_to_body.get(tmpl_name)
         if body is None:
@@ -168,8 +168,7 @@ class _Analyzer(trace_analysis.Analyzer):
             # Derive a copy so that calls and pipelines can be written
             # independently of the original.
             body = body.clone()
-        return self._compute_end_context(
-            start_ctx, tmpl_name, body, debug_hint)
+        return self._compute_end_context(name_and_ctx, body, debug_hint)
 
     def no_steady_state(self, states, debug_hint=None):
         for state in states:
@@ -179,12 +178,15 @@ class _Analyzer(trace_analysis.Analyzer):
             ', '.join([debug.context_to_string(state) for state in states])))
         return context.STATE_ERROR
 
-    def _compute_end_context(self, start_ctx, tmpl_name, body, debug_hint):
+    def _compute_end_context(self, name_and_ctx, body, debug_hint):
         """Propagate context over the body."""
-        ctx, problems = self._escape_template_body(tmpl_name, start_ctx, body)
+        tmpl_name, start_ctx = name_and_ctx
+        ctx, problems = self._escape_template_body(
+            name_and_ctx, start_ctx, body)
         if problems is not None:
             # Look for a fixed point by assuming c1 as the output context.
-            ctx2, problems2 = self._escape_template_body(tmpl_name, ctx, body)
+            ctx2, problems2 = self._escape_template_body(
+                name_and_ctx, ctx, body)
             if problems2 is None:
                 ctx, problems = ctx2, None
         if problems is not None:
@@ -197,35 +199,65 @@ class _Analyzer(trace_analysis.Analyzer):
             return context.STATE_ERROR
         return ctx
 
-    def _escape_template_body(self, tmpl_name, ctx, body):
+    def _escape_template_body(self, name_and_ctx, assumed_end_ctx, body):
         """
         escapes the given template assuming the given output context.
 
         It returns the best guess at an output context, and any problems
         encountered along the way or None on success.
+
+        name_and_ctx - the name and start context suitable as a key into
+            self.templates.
+        assumed_end_ctx - a possible end context.
+
+        Returns the best guess at the end context and a list of problems with
+        that end context.  If the list of problems is None, then the end
+        context is ok to use.
         """
-        key = (tmpl_name, ctx)
         # We need to assume an output context so that recursive template calls
         # take the fast path out of escapeTree instead of infinitely recursing.
         # Naively assuming that the input context is the same as the output
         # works >90% of the time.
-        self.templates[key] = (body, ctx)
+        self.templates[name_and_ctx] = (body, assumed_end_ctx)
+
+        def ctx_filter(end_ctx, analyzer):
+            """
+            Checks the end context so we do not update self unless we can
+            confidently compute an end context.
+
+            end_ctx - the computed context after the call completes.
+            analyzer - the analyzer used to type the body.
+            """
+            return not (
+                context.is_error_context(end_ctx)
+                # If the template is recursively called, end_ctx must be
+                # consistent with our assumption.  Otherwise our assumption
+                # didn't factor into the computation of end_ctx, so we can
+                # just use end_ctx.
+                or (name_and_ctx in analyzer.called
+                    and assumed_end_ctx != end_ctx))
+
+        _, start_ctx = name_and_ctx
+
+        end_ctx, problems = self._escape_body_conditionally(
+            start_ctx, body, ctx_filter)
+        if problems is None:
+            self.templates[name_and_ctx] = (body, end_ctx)
+        else:
+            self.templates[name_and_ctx] = (body, context.STATE_ERROR)
+        return end_ctx, problems
+
+    def _escape_body_conditionally(
+        self, start_ctx, body, ctx_filter=lambda ctx, analyzer: True):
 
         # Derive an analyzer so we can see if our assumptions hold before
         # committing to them.
         analyzer = _Analyzer(self.name_to_body, self.start_state,
                              templates=self.templates)
-        end_ctx = body.reduce_traces(ctx, analyzer)
+        end_ctx = body.reduce_traces(start_ctx, analyzer)
 
-        # Do not update self if we cannot confidently compute an end context.
-        if (context.is_error_context(end_ctx)
-            # If the template is recursively called, end_ctx must be
-            # consistent with our assumption.  Otherwise our assumption
-            # didn't factor into the computation of end_ctx, so we can
-            # just use end_ctx.
-            or (key in self.called and ctx != end_ctx)):
-            self.templates[key] = (body, context.STATE_ERROR)
-            return end_ctx, analyzer.errors
+        if not ctx_filter(end_ctx, analyzer):
+            return end_ctx, analyzer.errors            
 
         # Copy inferences and pending changes from analyzer back into self.
         _copyinto(self.templates, analyzer.templates)
@@ -234,7 +266,6 @@ class _Analyzer(trace_analysis.Analyzer):
         _copyinto(self.interps, analyzer.interps)
         _copyinto(self.calls, analyzer.calls)
         _copyinto(self.errors, analyzer.errors)
-        self.templates[key] = (body, end_ctx)
         return end_ctx, None
 
     def rewrite(self):
