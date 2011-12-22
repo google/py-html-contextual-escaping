@@ -132,7 +132,6 @@ class _Analyzer(trace_analysis.Analyzer):
                             debug.context_to_string(start_state)))
                     else:
                         self.error(debug_hint, problem)
-                        
                 return end_state
         if hasattr(step_value, 'to_callee'):
             # Handle calls to other templates by recursively typing the end
@@ -335,15 +334,11 @@ class _Analyzer(trace_analysis.Analyzer):
                 out_callee = contextualize_name(callee, call_ctx)
                 if out_callee != callee:
                     node = node.with_callee(out_callee)
-            changed = False
-            children = []
-            for child in node.children():
-                out_child = rewrite_node(child)
-                if out_child is not child:
-                    changed = True
-                children.append(out_child)
-            if changed:
-                node = node.with_children(children)
+            children = tuple(node.children())
+            rewritten_children = tuple(
+                [rewrite_node(child) for child in children])
+            if children != rewritten_children:
+                node = node.with_children(rewritten_children)
             return node
 
         for ((tmpl_name, start_ctx), (body, _)) in self.templates.iteritems():
