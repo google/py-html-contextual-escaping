@@ -99,6 +99,7 @@ class ContextUpdateTest(unittest.TestCase):
             (
                 '<a href=>',
                 context.STATE_TEXT,
+                '<a href="">',
                 ),
             (
                 '<a href=x>',
@@ -1508,12 +1509,12 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "<a b=1 c={{.H}}",
-            ('template t does not start and end in the same context:'
+            ('template z does not start and end in the same context:'
              ' [Context STATE_ATTR DELIM_SPACE_OR_TAG_END]'),
         ),
         (
             "<script>foo();",
-            "template t does not start and end in the same context",
+            "template z does not start and end in the same context",
         ),
         (
             '<a href="{{if .F}}/foo?a={{else}}/bar/{{end}}{{.H}}">',
@@ -1536,7 +1537,7 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             '<a onclick="/foo[\]/',
-            r'template t does not start and end in the same context:',
+            r'template z does not start and end in the same context:',
         ),
         (
             # It is ambiguous whether 1.5 should be 1\.5 or 1.5.
@@ -1555,7 +1556,7 @@ class ContextUpdateTest(unittest.TestCase):
             "z:1: no such template foo",
         ),
         (
-            '{{define "t"}}<div{{template "y"}}>{{end}}' +
+            '{{define "z"}}<div{{template "y"}}>{{end}}' +
                 # Illegal starting in stateTag but not in stateText.
                 '{{define "y"}} foo<b{{end}}',
             'bad content in [Context STATE_TAG]: `<b`',
@@ -1568,40 +1569,40 @@ class ContextUpdateTest(unittest.TestCase):
             ('{{define "t"}}'
              '{{if .Tail}}{{template "t" .Tail}}{{end}}{{.Head}}",'
              '{{end}}'),
-            (': cannot compute output context for template '
-             't$htmltemplate_stateJS_elementScript'),
+            (': cannot compute output context for template t in'
+             ' [Context STATE_JS ELEMENT_SCRIPT]'),
         ),
         (
-            '<input type=button value=onclick=>',
-            'exp/template/html:z: "=" in unquoted attr: "onclick="',
+            "<input type=button value=onclick=>",
+            "z:1: '=' in unquoted attr: 'onclick='",
         ),
         (
             '<input type=button value= onclick=>',
-            'exp/template/html:z: "=" in unquoted attr: "onclick="',
+            "z:1: '=' in unquoted attr: 'onclick='",
         ),
         (
-            '<input type=button value= 1+1=2>',
-            'exp/template/html:z: "=" in unquoted attr: "1+1=2"',
+            "<input type=button value= 1+1=2>",
+            "z:1: '=' in unquoted attr: '1+1=2'",
         ),
         (
             "<a class=`foo>",
-            "exp/template/html:z: \"`\" in unquoted attr: \"`foo\"",
+            "z:1: bad content in [Context STATE_BEFORE_VALUE]: ``foo>`",
         ),
         (
             "<a style=font:'Arial'>",
-            'exp/template/html:z: "\'" in unquoted attr: "font:\'Arial\'"',
+            'z:1: "\'" in unquoted attr: "font:\'Arial\'"',
         ),
         (
             '<a=foo>',
-            ': expected space, attr name, or end of tag, but got "=foo>"',
+            'z:1: bad content in [Context STATE_TAG_NAME]: `=foo>`',
         ),
         )
 
         for test_input, want in tests:
             got = None
             try:
-                env = template.parse_templates('z', test_input, 't')
-                escape.escape(env.templates, ('t',))
+                env = template.parse_templates('z', test_input, 'z')
+                escape.escape(env.templates, ('z',))
             except escape.EscapeError, err:
                 got = str(err)
             except:

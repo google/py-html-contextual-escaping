@@ -594,16 +594,12 @@ _TRANSITIONS[STATE_AFTER_NAME] = (
     )
 _TRANSITIONS[STATE_BEFORE_VALUE] = (
     _TransitionToAttrValue(r'^\s*["]', DELIM_DOUBLE_QUOTE),
-    _TransitionToAttrValue(r'^\s*\'', DELIM_SINGLE_QUOTE),
-    _TransitionToAttrValue(r'^(?=[^\"\'\s>])',  # Unquoted value start.
+    _TransitionToAttrValue(r'^\s*[\']', DELIM_SINGLE_QUOTE),
+    _TransitionToAttrValue(r'^(?=[^=\"\'\`\s>])',  # Unquoted value start.
                            DELIM_SPACE_OR_TAG_END),
-    # Epsilon transition back if there is an empty value followed by an
-    # obvious attribute name or a tag end.
-    # The first branch handles the blank value in:
+    # Epsilon transition back if there is an empty value followed by a tag end:
     #    <input value=>
-    # and the second handles the blank value in:
-    #    <input value= name=foo>
-    _TransitionBackToTag(r'^(?=>|\s+[A-Za-z][A-Za-z0-9-]*\s*=)'),
+    _NormalizeTransition(_TransitionBackToTag(r'^(?=/?>)'), '""'),
     _TransitionToSelf(r'^\s+'),
     )
 _TRANSITIONS[STATE_HTMLCMT] = (
@@ -869,6 +865,19 @@ def process_raw_text(raw_text, context):
                 normalized.write('"')
         else:
             # Inside an attribute value.  Find the end and decode up to it.
+
+            if delim_type == DELIM_SPACE_OR_TAG_END:
+                # Check for suspicious characters in the value.
+                # http://www.w3.org/TR/html5/tokenization.html
+                # #attribute-value-unquoted-state
+                # identifies [\0"'<=`] as transitions to error states.
+                # If they occur in an unquoted value they are almost surely
+                # an indication of an error in the template.
+                bad = re.search(r'[\x00"\'<=`]', raw_text[:attr_value_end])
+                if bad:
+                    raise ContextUpdateFailure(
+                        '%r in unquoted attr: %r'
+                        % (bad.group(), raw_text[:attr_value_end]))
 
             # All of the languages we deal with (HTML, CSS, and JS) use
             # quotes as delimiters.
