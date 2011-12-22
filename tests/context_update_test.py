@@ -1421,7 +1421,7 @@ class ContextUpdateTest(unittest.TestCase):
         for test_input, want in tests:
             source = ""
             for name, body in test_input.iteritems():
-                source = "%s{{define %s}}%s{{end}} " % (source, name, body)
+                source = "%s{{define %r}}%s{{end}} " % (source, name, body)
             try:
                 env = template.parse_templates('test', source)
                 # pred is a template function that returns the predecessor of a
@@ -1508,32 +1508,35 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "<a b=1 c={{.H}}",
-            ('template t does not end in the same context it starts:'
+            ('template t does not start and end in the same context:'
              ' [Context STATE_ATTR DELIM_SPACE_OR_TAG_END]'),
         ),
         (
             "<script>foo();",
-            "template t does not end in the same context it starts",
+            "template t does not start and end in the same context",
         ),
         (
             '<a href="{{if .F}}/foo?a={{else}}/bar/{{end}}{{.H}}">',
-            "z:1: {{.H}} appears in an ambiguous URL context",
+            "z:1: {{.H}}: hole appears in an ambiguous URL context",
         ),
         (
             "<a onclick=\"alert('Hello \\",
-            r'''unfinished escape sequence in JS string: "Hello \\"''',
+            (r"z:1: bad content in [Context STATE_JS DELIM_DOUBLE_QUOTE]:"
+             r" `alert('Hello \`"),
         ),
         (
             "<a onclick='alert(\"Hello\\, World\\",
-            r'''unfinished escape sequence in JS string: "Hello\\, World\\"''',
+            (r'z:1: bad content in [Context STATE_JS DELIM_SINGLE_QUOTE]:'
+             r' `alert("Hello\, World\`'),
         ),
         (
-            "<a onclick=\'alert(/x+\\",
-            r'''unfinished escape sequence in JS string: "x+\\"''',
+            "<a onclick='alert(/x+\\",
+            (r'z:1: bad content in [Context STATE_JS DELIM_SINGLE_QUOTE]:'
+             r' `alert(/x+\`'),
         ),
         (
-            r'''<a onclick="/foo[\]/''',
-            r'''unfinished JS regexp charset: "foo[\\]/"''',
+            '<a onclick="/foo[\]/',
+            r'template t does not start and end in the same context:',
         ),
         (
             # It is ambiguous whether 1.5 should be 1\.5 or 1.5.
@@ -1542,19 +1545,20 @@ class ContextUpdateTest(unittest.TestCase):
             # or `/-1\.5/i.test(x)` which is a method call on a
             # case insensitive regular expression.
             ('<script>'
-             '{{if false}}var x = 1{{end}}/-{{"1.5"}}/i.test(x)'
+             '{{if False}}var x = 1{{end}}/-{{"1.5"}}/i.test(x)'
              '</script>'),
-            "'/' could start a division or regexp: \"/-\"",
+            ('ambiguous / could start a division or a RegExp.'
+             '  Please parenthesize near `/-`.'),
         ),
         (
             '{{template "foo"}}',
             "z:1: no such template foo",
         ),
         (
-            '{{define "z"}}<div{{template "y"}}>{{end}}' +
+            '{{define "t"}}<div{{template "y"}}>{{end}}' +
                 # Illegal starting in stateTag but not in stateText.
                 '{{define "y"}} foo<b{{end}}',
-            '"<" in attribute name: " foo<b"',
+            'bad content in [Context STATE_TAG]: `<b`',
         ),
         (
             ('{{define "z"}}'
@@ -1600,6 +1604,9 @@ class ContextUpdateTest(unittest.TestCase):
                 escape.escape(env.templates, ('t',))
             except escape.EscapeError, err:
                 got = str(err)
+            except:
+                print '\ntest_errors: %s' % test_input
+                raise
             if want is None:
                 if got is not None:
                     self.fail("input=%r: unexpected error %r" % (input, got))

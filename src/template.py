@@ -10,7 +10,7 @@ Usage:
     template_output = env.with_data({ 'foo': 'bar' }).sexecute()
    
 Template definitions contain embedded commands surrounded in {{...}}.
-  {{define name}}...{{end}}
+  {{define 'name'}}...{{end}}
       defines a template
   {{if expr}}...{{else}}...{{end}}
       a conditional
@@ -81,7 +81,7 @@ class Env(object):
     def __str__(self):
         """Returns a form parseable by parse_templates."""
         return '\n\n'.join(
-            [("{{define %s}}%s{{end}}" % (name, body))
+            [("{{define %r}}%s{{end}}" % (name, body))
              for (name, body) in self.templates.iteritems()])
 
     def parse_templates(self, loc, code, name=None):
@@ -90,9 +90,9 @@ class Env(object):
         See module function parse_templates for description of parameters.
 
         For example,
-            env.parse_templates(loc, '{{define foo}}Hi{{end}}World', name='bar')
+            env.parse_templates(loc, '{{define "foo"}}Hello{{end}}World', 'bar')
         will augment env with two templates so that
-            env.sexecute('foo') == 'Hi' and env.sexecute('bar') == 'World'
+            env.sexecute('foo') == 'Hello' and env.sexecute('bar') == 'World'
         """
         _parse_templates_into(self.templates, loc=loc, code=code, name=name)
 
@@ -233,7 +233,8 @@ class _InterpolationNode(Node):
         return _InterpolationNode(self.loc, pipeline.expr)
 
     def reduce_traces(self, start_state, analyzer):
-        return analyzer.step(start_state, self, debug_hint=self.loc)
+        return analyzer.step(
+            start_state, self, debug_hint='%s: %s' % (self.loc, self))
 
     def __str__(self):
         return "{{%s}}" % self.expr
@@ -536,7 +537,7 @@ def parse_templates(loc, code, name=None):
     name - The name to use for the implied template definition.
 
     For example,
-        parse_templates(..., '{{define foo}}Hello{{end}}World!', name='bar')
+        parse_templates(..., '{{define "foo"}}Hello{{end}}World!', name='bar')
     will return an environment, env, with two templates so that
         env.sexecute('foo') == 'Hello'
         env.sexecute('bar') == 'World!'
@@ -588,12 +589,16 @@ def _parse_templates_into(name_to_body, loc, code, name=None):
     # template grammar which updates name_to_body in place.
     # Functions consume tokens so all operate on the queue defined above.
     def parse_define():
-        """Parses a {{{define}}}...{{end}} to update name_to_body"""
+        """Parses a {{{define 'name'}}}...{{end}} and updates name_to_body."""
         token = toks.peek()
         if token is None or not re.search(
             r'(?s)\A\{\{define\b.*\}\}\Z', token):
             toks.fail('expected {{define...}} not %s' % token)
-        name = _require_name(toks, token[len('{{define'):-2].strip())
+        name_expr = _parse_expr(
+            toks.loc_at(), token[len('{{define'):-2].strip())
+        name = name_expr.evaluate(None)
+        if type(name) not in (str, unicode):
+            toks.fail('Expected quoted template name, not %s' % name_expr)
         toks.consume()
         define(name)
         toks.expect('{{end}}')
@@ -778,7 +783,10 @@ def _parse_expr(loc, toks, consume_all=True):
         """
         toks.skip_ignorable()
         token = toks.peek()
-        _require_name(toks, token)
+        if token is None:
+            toks.fail('missing function name at end of input')
+        if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
+            toks.fail('expected function name but got %s' % token)
         toks.consume()
         return token
 
@@ -985,12 +993,3 @@ _NUMBER = re.compile(
     # Optional exponent
     '(?:[eE][+-]?[0-9]+)?'
     ')\Z')
-
-
-def _require_name(toks, token):
-    """Fails if the given token is not an identifier."""
-    if token is None:
-        toks.fail('missing function name at end of input')
-    if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):
-        toks.fail('expected function name but got %s' % token)
-    return token
