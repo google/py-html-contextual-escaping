@@ -596,9 +596,10 @@ class ContextUpdateTest(unittest.TestCase):
                 self.fail("input %r: want context\n\t%s\ngot\n\t%s"
                           % (test_input, debug.context_to_string(want_ctx),
                              debug.context_to_string(got_ctx)))
-            if got_text != want_text:
-                self.fail("input %r: want text\n\t%r\ngot\n\t%r"
-                          % (test_input, want_text, got_text)),
+            self.assertEquals(
+                got_text, want_text,
+                msg = ("input %r: want text\n\t%r\ngot\n\t%r"
+                       % (test_input, want_text, got_text)))
 
     def test_escape(self):
         """
@@ -1291,6 +1292,9 @@ class ContextUpdateTest(unittest.TestCase):
 
 
     def test_escape_set(self):
+        """
+        Test cases involving multiple and recursive templates.
+        """
         data = {
             "Children": [
                 {"X": "foo"},
@@ -1434,6 +1438,9 @@ class ContextUpdateTest(unittest.TestCase):
 
 
     def test_errors(self):
+        """
+        Check reported error messages.
+        """
         tests = (
         # Non-error cases.
         (
@@ -1590,7 +1597,7 @@ class ContextUpdateTest(unittest.TestCase):
             got = None
             try:
                 env = template.parse_templates('z', test_input, 't')
-                env = escape.escape(env.templates, ('t',))
+                escape.escape(env.templates, ('t',))
             except escape.EscapeError, err:
                 got = str(err)
             if want is None:
@@ -1607,6 +1614,10 @@ class ContextUpdateTest(unittest.TestCase):
 
 
     def test_ensure_pipeline_contains(self):
+        """
+        Test the interaction between existing escaping directives and those
+        required by the contextual escaper.
+        """
         tests = (
         (
             "{{.X}}",
@@ -1670,6 +1681,9 @@ class ContextUpdateTest(unittest.TestCase):
                           % (test_input, ids, want, got))
 
     def test_redundant_funcs(self):
+        """
+        Check that the redundant funcs invariant holds.
+        """
         inputs = (
             ("\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f"
              "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
@@ -1690,21 +1704,22 @@ class ContextUpdateTest(unittest.TestCase):
             )
 
         for fi0, fi1 in escaping.REDUNDANT_ESC_MODES:
-            f0 = escaping.SANITIZER_FOR_ESC_MODE[fi0]
-            f1 = escaping.SANITIZER_FOR_ESC_MODE[fi1]
+            fn0 = escaping.SANITIZER_FOR_ESC_MODE[fi0]
+            fn1 = escaping.SANITIZER_FOR_ESC_MODE[fi1]
             for test_input in inputs:
-                want = f0(test_input)
-                got = f1(want)
+                want = fn0(test_input)
+                got = fn1(want)
                 if want != got:
                     self.fail(
                         "%s %s with %r: want\n\t%r,\ngot\n\t%r"
-                        % (f0.__name__, f1.__name__, test_input, want, got))
+                        % (fn0.__name__, fn1.__name__, test_input, want, got))
 
 
 
 if __name__ == '__main__':
     if len(sys.argv) == 2 and '-' == sys.argv[1]:
         def _tmpls_from_stdin():
+            """Read template from stdin and dump the output to stdout."""
             code = sys.stdin.read().decode('UTF-8')
             env = template.parse_templates('-', code, 'main')
             escape.escape(env.templates, ('main',))

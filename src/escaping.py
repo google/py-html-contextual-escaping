@@ -130,6 +130,60 @@ ESC_MODE_FOR_STATE[context.STATE_JSREGEXP] = ESC_MODE_ESCAPE_JS_REGEX
 ESC_MODE_FOR_STATE[context.STATE_URL] = ESC_MODE_ESCAPE_HTML_ATTRIBUTE
 
 
+def esc_mode_for_hole(context_before):
+    """
+    Given a context in which an untrusted value hole appears, computes the
+    escaping modes needed to render that untrusted value safe for interpolation
+    and the context after the hole.
+    
+    context_before - The input context before the substitution.
+
+    Returns (context after, (escaping_modes...,))
+    """
+    ctx = context.force_epsilon_transition(context_before)
+    state, url_part = context.state_of(ctx), context.url_part_of(ctx)
+    esc_modes = [ESC_MODE_FOR_STATE[state]]
+    if url_part == context.URL_PART_NONE:
+        # Make sure that at the start of a URL, we filter out dangerous
+        # protocols.
+        if state in (
+            context.STATE_URL, context.STATE_CSS_URL, context.STATE_CSSDQ_URL,
+            context.STATE_CSSSQ_URL):
+            esc_modes = [ESC_MODE_FILTER_URL, ESC_MODE_NORMALIZE_URL]
+            ctx = (ctx & ~context.URL_PART_ALL) | context.URL_PART_PRE_QUERY
+        elif state in (context.STATE_CSSDQ_STR, context.STATE_CSSSQ_STR):
+            esc_modes[:0] = [ESC_MODE_FILTER_URL]
+            ctx = (ctx & ~context.URL_PART_ALL) | context.URL_PART_PRE_QUERY
+    elif url_part == context.URL_PART_PRE_QUERY:
+        if state not in (context.STATE_CSSDQ_STR, context.STATE_CSSSQ_STR):
+            esc_modes[0] = ESC_MODE_NORMALIZE_URL
+    elif url_part == context.URL_PART_QUERY_OR_FRAG:
+        esc_modes[0] = ESC_MODE_ESCAPE_URL
+
+    if state == context.STATE_JS:
+        ctx = (ctx & ~context.JS_CTX_ALL) | context.JS_CTX_DIV_OP
+
+    esc_mode = esc_modes[-1]
+    delim_type = context.delim_type_of(ctx)
+    if delim_type != context.DELIM_NONE:
+        # Figure out how to escape the attribute value.
+        if esc_mode != ESC_MODE_ESCAPE_HTML_ATTRIBUTE:
+            esc_modes.append(ESC_MODE_ESCAPE_HTML_ATTRIBUTE)
+        if (context.delim_type_of(context_before) == context.DELIM_NONE
+            and delim_type == context.DELIM_SPACE_OR_TAG_END):
+            esc_modes.append(ESC_MODE_OPEN_QUOTE)
+
+    last, i = esc_modes[0], 1
+    while i < len(esc_modes):
+        curr = esc_modes[i]
+        # If, for all x, f(g(x)) == g(x), we can skip f.
+        if (last, curr) in REDUNDANT_ESC_MODES:
+            esc_modes[i:i+1] = []
+        else:
+            last = curr
+            i += 1
+    return ctx, tuple(esc_modes)
+
 
 def escape_html(value):
     """
@@ -228,12 +282,12 @@ def filter_html_attribute(value):
     \"zSafehtmlz\" if the input is invalid.
     """
 
-    if type(value) not in (str, unicode):
-        value = str(value)
     if (isinstance(value, content.TypedContent)
         and value.kind == content.CONTENT_KIND_HTML_ATTR):
         # TODO: Normalize quotes and surrounding space.
         return value.content
+    if type(value) not in (str, unicode):
+        value = str(value)
     value = _filter_html_attribute_helper(value)
     equals_index = value.find('=')
     if equals_index >= 0 and value[-1] not in ('"', "'"):

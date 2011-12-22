@@ -101,77 +101,12 @@ def context_union(context0, context1):
     #   <p title={{if .C}}{{.}}{{end}}
     # ends in an unquoted value state even though the else branch
     # ends in stateBeforeValue.
-    ncontext0 = context_before_dynamic_value(context0)
-    ncontext1 = context_before_dynamic_value(context1)
+    ncontext0 = force_epsilon_transition(context0)
+    ncontext1 = force_epsilon_transition(context1)
     if context0 != ncontext0 or context1 != ncontext1:
         return context_union(ncontext0, ncontext1)
 
     return STATE_ERROR
-
-
-def context_before_dynamic_value(context):
-    """
-    Some epsilon transitions need to be delayed until we get into a branch.
-    For example, we do not transition into an unquoted attribute value
-    context just because the raw text node that contained the "=" did
-    not contain a quote character because the quote character may appear
-    inside branches as in
-        <a href={{if ...}}"..."{{else}}"..."{{/if}}>
-    which was derived from production code.
-
-    Parsing:
-        <a href=
-    will end in context STATE_BEFORE_VALUE | ATTR_URL, but parsing another char:
-        <a href=x
-    will end in context STATE_URL | DELIM_SPACE_OR_TAG_END | ...
-    There are two transitions that happen when the 'x' is seen:
-    (1) Transition from a before-value state to a start-of-value state without
-        consuming any character.
-    (2) Consume 'x' and transition past the first value character.
-    In this case, nudging produces the context after (1) happens.
-
-    We need to force epsilon transitions to happen consistently before
-    a dynamic value is considered as in
-        <a href=${x}>
-    where we consider $x as happening in an unquoted attribute value context,
-    not as occuring before an attribute value.
-    """
-
-    state = state_of(context)
-    if state in (STATE_TAG, STATE_TAG_NAME):
-        # In "<foo {{.}}", the hole should be filled with an attribute.
-        context = (context & ~STATE_ALL) | STATE_ATTR_NAME
-    elif state == STATE_BEFORE_VALUE:
-        # In "<foo bar={{.}}", the hole should be filled with an unquoted
-        # value.
-        context = context_after_attr_delimiter(
-            element_type_of(context), attr_type_of(context),
-            DELIM_SPACE_OR_TAG_END)
-    elif state == STATE_AFTER_NAME:
-        # In "<foo bar {{.}}", the hole should be filled with an attribute name.
-        context = (context & ~(STATE_ALL | ATTR_ALL)) | (
-            STATE_ATTR_NAME | ATTR_NONE)
-    return context
-
-
-_PARTIAL_CONTEXT_FOR_ATTR = {
-    ATTR_NONE: STATE_ATTR,
-    # Start a JS block in a regex state since
-    #   /foo/.test(str) && doSideEffect();
-    # which starts with a regular expression literal is a valid and possibly
-    # useful program, but there is no valid program which starts with a
-    # division operator.
-    ATTR_SCRIPT: STATE_JS | JS_CTX_REGEX,
-    ATTR_STYLE: STATE_CSS,
-    ATTR_URL: STATE_URL | URL_PART_NONE,
-    }
-
-def context_after_attr_delimiter(el_type, attr_type, delim):
-    """
-    Returns the context after an attribute delimiter for the given element
-    type, attribute type, and delimiter type.
-    """
-    return _PARTIAL_CONTEXT_FOR_ATTR[attr_type] | el_type | delim
 
 
 # Characters that break a line in JavaScript source suitable for use in a
@@ -407,7 +342,7 @@ class _TransitionToAttrValue(_Transition):
         self.delim = delim
 
     def compute_next_context(self, prior, match):
-        return context_after_attr_delimiter(
+        return after_attr_delimiter(
             element_type_of(prior), attr_type_of(prior), self.delim)
 
 
@@ -1028,53 +963,3 @@ def process_raw_text(raw_text, context):
 # we have a potential splitting attack.
 # That and disallow unquoted attributes, and be paranoid about prints
 # especially in the TAG_NAME productions.
-
-
-
-def escaping_mode_for_hole(context_before):
-    """
-    context_before - The input context before the substitution.
-
-    Returns (context after, (escaping_modes...,))
-    """
-    context = context_before_dynamic_value(context_before)
-    state, url_part = state_of(context), url_part_of(context)
-    esc_modes = [escaping.ESC_MODE_FOR_STATE[state]]
-    if url_part == URL_PART_NONE:
-        if state in (
-            STATE_URL, STATE_CSS_URL, STATE_CSSDQ_URL, STATE_CSSSQ_URL):
-            esc_modes = [escaping.ESC_MODE_FILTER_URL,
-                         escaping.ESC_MODE_NORMALIZE_URL]
-            context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
-        elif state in (STATE_CSSDQ_STR, STATE_CSSSQ_STR):
-            esc_modes[:0] = [escaping.ESC_MODE_FILTER_URL]
-            context = (context & ~URL_PART_ALL) | URL_PART_PRE_QUERY
-    elif url_part == URL_PART_PRE_QUERY:
-        if state not in (STATE_CSSDQ_STR, STATE_CSSSQ_STR):
-            esc_modes[0] = escaping.ESC_MODE_NORMALIZE_URL
-    elif url_part == URL_PART_QUERY_OR_FRAG:
-        esc_modes[0] = escaping.ESC_MODE_ESCAPE_URL
-
-    if state == STATE_JS:
-        context = (context & ~JS_CTX_ALL) | JS_CTX_DIV_OP
-
-    esc_mode = esc_modes[-1]
-    delim_type = delim_type_of(context)
-    if delim_type != DELIM_NONE:
-        # Figure out how to escape the attribute value.
-        if esc_mode != escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE:
-            esc_modes.append(escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE)
-        if (delim_type_of(context_before) == DELIM_NONE
-            and delim_type == DELIM_SPACE_OR_TAG_END):
-            esc_modes.append(escaping.ESC_MODE_OPEN_QUOTE)
-
-    last, i = esc_modes[0], 1
-    while i < len(esc_modes):
-        curr = esc_modes[i]
-        if (last, curr) in escaping.REDUNDANT_ESC_MODES:
-            # If, for all x, f(g(x)) == g(x), we can skip f.
-            esc_modes[i:i+1] = []
-        else:
-            last = curr
-            i += 1
-    return context, tuple(esc_modes)

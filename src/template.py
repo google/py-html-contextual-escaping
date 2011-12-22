@@ -1,33 +1,30 @@
 #!/usr/bin/python
 
 """
-An implementation of enough of Go templates to allow thorough testing of
-contextual auto-escaping.
+An implementation of enough of Go templates to allow testing of auto-escaping.
 
-To use this module:
-
+Usage:
     # Parse templates.
     env = parse_templates(Loc('/my/template/file'), file_content)
     # Execute the templates with some data.
     template_output = env.with_data({ 'foo': 'bar' }).sexecute()
    
 Template definitions contain embedded commands surrounded in {{...}}.
-  {{define name}}...{{end}}            - defines a template
-  {{if expr}}...{{else}}...{{end}}     - a conditional
-  {{range expr}}...{{else}}}...{{end}} - loops over a series executing the body
-                                         with the value as the data context.
-                                         If the series is falsey/empty executes
-                                         the optional {{else}} part instead.
-  {{with expr}}...{{else}}...{{end}}   - executes the body using expr as the
-                                         data context.  If expr is falsey,
-                                         executes the optional {{else}} part
-                                         instead.
-  {{expr}}                             - emits the result of expr as output
-  {{template 'name' expr}}             - executed the named template.  If the
-                                         optional expr is present, uses that
-                                         as the data context for the template
-                                         or otherwise uses the current data
-                                         context.
+  {{define name}}...{{end}}
+      defines a template
+  {{if expr}}...{{else}}...{{end}}
+      a conditional
+  {{range expr}}...{{else}}}...{{end}}
+      loops over a series executing the body with the value as the data context.
+      If the series is falsey/empty executes the optional {{else}} part instead.
+  {{with expr}}...{{else}}...{{end}}
+      executes the body using expr as the data context.
+      If expr is falsey, executes the optional {{else}} part instead.
+  {{expr}}
+      emits the result of expr as output
+  {{template 'name' expr}}
+      executed the named template.  If the optional expr is present, uses that
+      as the data context for the template instead of the current data context.
 
 Template expressions can have the form:
   Literal values: 42, -1.5, 'foo', True, False, null
@@ -44,21 +41,17 @@ import cStringIO as StringIO
 import escaping
 import re
 
-
 # Functions available by default.
 _BUILTIN_FNS = {
     'noescape': lambda x: x,
     }
-
 for _builtin_fn in escaping.SANITIZER_FOR_ESC_MODE:
     if _builtin_fn is not None:
         _BUILTIN_FNS[_builtin_fn.__name__] = _builtin_fn
 
 
 class Env(object):
-    """
-    A group of templates and the environment in which they can be executed.
-    """
+    """Templates and the environment in which they can be executed."""
 
     def __init__(self, data, fns, templates):
         self.data = data
@@ -80,55 +73,37 @@ class Env(object):
         self.templates[name].execute(self, out)
 
     def sexecute(self, name):
-        """
-        Returns the result of executing the named template as a string.
-        """
+        """Returns the result of executing the named template as a string."""
         buf = StringIO.StringIO()
         self.templates[name].execute(self, buf)
         return buf.getvalue()
 
     def __str__(self):
-        """
-        Returns a form parseable by parse_templates.
-        """
+        """Returns a form parseable by parse_templates."""
         return '\n\n'.join(
             [("{{define %s}}%s{{end}}" % (name, body))
              for (name, body) in self.templates.iteritems()])
 
     def parse_templates(self, loc, code, name=None):
         """
-        Augments this environment with template definitions parsed from the
-        given template source.
-
-        loc - The source code location at the start of code.
-        code - Zero or more {{define}}...{{end}} and optionally zero or more
-               statements at the end which will be treated as the body of the
-               template named name.
-        name - The name to use for the implied template definition.
+        Augments this with template definitions parsed from code.
+        See module function parse_templates for description of parameters.
 
         For example,
-            parse_templates(..., '{{define foo}}Hello{{end}}World!', name='bar')
-        will return an environment, env, with two templates so that
-            env.sexecute('foo') == 'Hello'
-            env.sexecute('bar') == 'World!'
-
-        Returns an Env containing the builtin function definitions and
-        the parsed templates.
+            env.parse_templates(loc, '{{define foo}}Hi{{end}}World', name='bar')
+        will augment env with two templates so that
+            env.sexecute('foo') == 'Hi' and env.sexecute('bar') == 'World'
         """
-        _parse_templates_into(env=self, loc=loc, code=code, name=name)
-        return self
+        _parse_templates_into(self.templates, loc=loc, code=code, name=name)
 
 
 class Loc(object):
-    """
-    A location within a source code file.
-    """
+    """Describes a location within a source code file."""
 
     def __init__(self, src, line=1):
         """
-        src - description of source code file like a file path.
-        line - 1 greater than the number of line breaks ('\n', '\r', '\r\n')
-               before the location.
+        src - description of source of code.  For example a path or URL.
+        line - 1 greater than the number of line breaks preceding the location.
         """
         self.src = src
         self.line = line
@@ -138,22 +113,17 @@ class Loc(object):
 
 
 class Node(object):
-    """
-    Abstract base class for a tree-interpreted template.
-    """
+    """Abstract base class for a tree-interpreted template."""
 
     def __init__(self, loc):
         self.loc = loc
 
     def execute(self, env, out):
-        """
-        Appends output to out if a statement node,
-        or returns the value if an expression node.
-        """
+        """Appends output to out, or returns the result if an expression."""
         raise NotImplementedError('abstract')
 
     def clone(self):
-        """A structural copy"""
+        """Returns a structural copy."""
         return self.with_children([child.clone() for child in self.children()])
 
     def children(self):
@@ -161,9 +131,7 @@ class Node(object):
         raise NotImplementedError('abstract')
 
     def with_children(self, children):
-        """
-        Returns a copy of this but with the given children.
-        """
+        """Returns a copy of this but with the given children."""
         raise NotImplementedError('abstract')
 
     def reduce_traces(self, start_state, analyzer):
@@ -179,32 +147,26 @@ class Node(object):
 
 
 class ExprNode(Node):
-    """
-    Abstract base class for a node that is executed for its value.
-    """
+    """Abstract base class for a node that is executed for its value."""
 
     def __init__(self, loc):
         Node.__init__(self, loc)
 
     def evaluate(self, env):
-        """
-        Returns the value that results from evaluating the expression in
-        the given environment.
-        """
+        """Returns the result of evaluating the expression in env."""
         raise NotImplementedError()
 
     def execute(self, env, out):
         return self.execute(env, None)
 
     def reduce_traces(self, start_state, analyzer):
-        # Trace analysis should not descend into expressions.
-        raise Exception()
+        raise Exception()  # Trace analysis should not descend into expressions.
 
 
 class _TextNode(Node):
     """
     A chunk of raw text in the template's output language that was supplied
-    by a template author and which is not controllable by an arbitrary user.
+    by a template author and so not controllable by an attacker.
     """
 
     def __init__(self, loc, text):
@@ -224,16 +186,13 @@ class _TextNode(Node):
 
     def to_raw_content(self):
         """
-        Returns the node's text.
-
-        Satisfies the step value definition used by the trace analyzer.
+        Returns the node's text to satisfy the step value definition used by
+        the trace analyzer.
         """
         return self.text
 
     def with_raw_content(self, new_content):
-        """
-        Returns a version of this node but with the given text content.
-        """
+        """Returns a version of this node but with the given text content."""
         return _TextNode(self.loc, new_content)
 
     def reduce_traces(self, start_state, analyzer):
@@ -244,10 +203,11 @@ class _TextNode(Node):
 
 
 class _InterpolationNode(Node):
-    """An interpolation of an untrusted expression"""
+    """An interpolation of an untrusted expression into the template output."""
 
     def __init__(self, loc, expr):
         Node.__init__(self, loc)
+        assert isinstance(expr, ExprNode)
         self.expr = expr
 
     def execute(self, env, out):
@@ -265,15 +225,11 @@ class _InterpolationNode(Node):
         return _InterpolationNode(self.loc, children[0])
 
     def to_pipeline(self):
-        """
-        Satisfies the step value definition used by the trace analyzer.
-
-        Returns a Pipeline-like value that supports element_at and
-        insert_element_at.
-        """
+        """Satisfies the step value definition used by the trace analyzer."""
         return Pipeline(self.expr)
 
     def with_pipeline(self, pipeline):
+        """Satisfies the step value modifier used by the trace analyzer."""
         return _InterpolationNode(self.loc, pipeline.expr)
 
     def reduce_traces(self, start_state, analyzer):
@@ -398,6 +354,11 @@ class _TemplateNode(Node):
         return self.name.evaluate(None)
 
     def with_callee(self, callee):
+        """
+        Satisfies the step value definition used by the trace analyzer.
+
+        Returns a call to the named template with the same data as this call.
+        """
         assert type(callee) is str
         return _TemplateNode(
             self.loc, _LiteralNode(self.name.loc, callee), self.expr)
@@ -583,10 +544,10 @@ def parse_templates(loc, code, name=None):
     """
 
     env = Env(None, dict(_BUILTIN_FNS), {})
-    _parse_templates_into(env, loc, code, name)
+    _parse_templates_into(env.templates, loc, code, name)
     return env
 
-def _parse_templates_into(env, loc, code, name=None):
+def _parse_templates_into(name_to_body, loc, code, name=None):
     """
     Parses a template definition or set of template definitions
     into an existing environment.
@@ -622,10 +583,10 @@ def _parse_templates_into(env, loc, code, name=None):
 
 
     # The inner functions below comprise a recursive descent parser for the
-    # template grammar which updated env.templates in place.
+    # template grammar which updates name_to_body in place.
     # Functions consume tokens so all operate on the queue defined above.
     def parse_define():
-        """Parses a {{{define}}}...{{end}} to update env.templates"""
+        """Parses a {{{define}}}...{{end}} to update name_to_body"""
         token = toks.peek()
         if token is None or not re.search(
             r'(?s)\A\{\{define\b.*\}\}\Z', token):
@@ -636,10 +597,10 @@ def _parse_templates_into(env, loc, code, name=None):
         toks.expect('{{end}}')
 
     def define(name):
-        """Updated env.templates[name] or fails with an informative error"""
-        if name in env.templates:
+        """Updates name_to_body[name] or fails with an informative error"""
+        if name in name_to_body:
             toks.fail('Redefinition of %r' % name)
-        env.templates[name] = parse_list()
+        name_to_body[name] = parse_list()
 
     def parse_list():
         """Parses a series of statement nodes."""
@@ -772,11 +733,10 @@ def _parse_expr(loc, toks, consume_all=True):
         loc = toks.loc_at()
         ch0 = token[0]
         if ch0 == '.':  # Reference
-            if token != '.':
-                # .Foo.Bar -> ['Foo', 'Bar'] so we can lookup data elements
-                # in order.
-                parts = token[1:].split('.')
-            else:
+            # .Foo.Bar -> ['Foo', 'Bar'] so we can lookup data elements
+            # in order.
+            parts = tuple(token[1:].split('.'))
+            if parts == ('',):
                 # . means all data, so use () because following zero key
                 # traversals leaves from data leaves us in the right place.
                 parts = ()
@@ -841,9 +801,7 @@ def _parse_expr(loc, toks, consume_all=True):
 
 
 class _Tokens(object):
-    """
-    A cursor over a sequence of tokens.
-    """
+    """A cursor over a sequence of tokens."""
 
     def __init__(self, loc, tokens):
         if type(loc) in (str, unicode):
@@ -854,9 +812,7 @@ class _Tokens(object):
         self.line = loc.line
 
     def is_empty(self):
-        """
-        True if there are uncomsumed tokens remaining.
-        """
+        """True if there are uncomsumed tokens remaining."""
         return not self.tokens
 
     def is_ignorable(self):
@@ -873,9 +829,7 @@ class _Tokens(object):
             self.consume()
 
     def loc_at(self):
-        """
-        The location of the token cursor.
-        """
+        """The location of the token cursor."""
         return Loc(self.loc.src, self.line)
 
     def fail(self, msg):
@@ -894,9 +848,7 @@ class _Tokens(object):
         return self.tokens[0]
 
     def consume(self, n_tokens=1):
-        """
-        Advances the cursor past the current token.
-        """
+        """Advances the cursor past the current token."""
         line = self.line
         for consumed in self.tokens[:n_tokens]:
             pos = -1
@@ -930,16 +882,12 @@ class _Tokens(object):
                 self.fail('Expected %s, got %s' % (token, self.peek()))
 
     def __str__(self):
-        """
-        The text of the unconsumed tokens.
-        """
+        """The text of the unconsumed tokens."""
         return ''.join(self.tokens)
 
 
 class _ExprTokens(_Tokens):
-    """
-    A token queue suitable for parsing ExprNodes.
-    """
+    """A token queue suitable for parsing ExprNodes."""
 
     def __init__(self, loc, tokens):
         _Tokens.__init__(self, loc, tokens)
@@ -967,6 +915,7 @@ class Pipeline(object):
         """
         result = [None]
         def walk(expr):
+            """Count back from the end of the pipeline to find the element."""
             if not _is_pipe(expr):
                 return 0
             arg_index = walk(expr.args[0])
@@ -986,6 +935,7 @@ class Pipeline(object):
         # .|a|foo|b which is c(b(foo(a(.))))
         """
         def walk(expr):
+            """Count back from the end of the pipeline to find the element."""
             if not _is_pipe(expr):
                 return 0, expr
             arg = expr.args[0]
@@ -1036,9 +986,7 @@ _NUMBER = re.compile(
 
 
 def _require_name(toks, token):
-    """
-    Fails if the given token is not an identifier.
-    """
+    """Fails if the given token is not an identifier."""
     if token is None:
         toks.fail('missing function name at end of input')
     if not re.search(r'\A[A-Za-z][A-Za-z0-9_]*\Z', token):

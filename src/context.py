@@ -255,3 +255,69 @@ URL_PART_UNKNOWN = 3 << 14
 
 # All of the URL part bits set.
 URL_PART_ALL = 3 << 14
+
+
+_PARTIAL_CONTEXT_FOR_ATTR = {
+    ATTR_NONE: STATE_ATTR,
+    # Start a JS block in a regex state since
+    #   /foo/.test(str) && doSideEffect();
+    # which starts with a regular expression literal is a valid and possibly
+    # useful program, but there is no valid program which starts with a
+    # division operator.
+    ATTR_SCRIPT: STATE_JS | JS_CTX_REGEX,
+    ATTR_STYLE: STATE_CSS,
+    ATTR_URL: STATE_URL | URL_PART_NONE,
+    }
+
+
+def after_attr_delimiter(el_type, attr_type, delim):
+    """
+    Returns the context after an attribute delimiter for the given element
+    type, attribute type, and delimiter type.
+    """
+    return _PARTIAL_CONTEXT_FOR_ATTR[attr_type] | el_type | delim
+
+
+def force_epsilon_transition(context):
+    """
+    Some epsilon transitions need to be delayed until we get into a branch.
+    For example, we do not transition into an unquoted attribute value
+    context just because the raw text node that contained the "=" did
+    not contain a quote character because the quote character may appear
+    inside branches as in
+        <a href={{if ...}}"..."{{else}}"..."{{/if}}>
+    which was derived from production code.
+
+    Parsing:
+        <a href=
+    will end in context STATE_BEFORE_VALUE | ATTR_URL, but parsing another char:
+        <a href=x
+    will end in context STATE_URL | DELIM_SPACE_OR_TAG_END | ...
+    There are two transitions that happen when the 'x' is seen:
+    (1) Transition from a before-value state to a start-of-value state without
+        consuming any character.
+    (2) Consume 'x' and transition past the first value character.
+    In this case, nudging produces the context after (1) happens.
+
+    We need to force epsilon transitions to happen consistently before
+    a dynamic value is considered as in
+        <a href=${x}>
+    where we consider $x as happening in an unquoted attribute value context,
+    not as occuring before an attribute value.
+    """
+
+    state = state_of(context)
+    if state in (STATE_TAG, STATE_TAG_NAME):
+        # In "<foo {{.}}", the hole should be filled with an attribute.
+        context = (context & ~STATE_ALL) | STATE_ATTR_NAME
+    elif state == STATE_BEFORE_VALUE:
+        # In "<foo bar={{.}}", the hole should be filled with an unquoted
+        # value.
+        context = after_attr_delimiter(
+            element_type_of(context), attr_type_of(context),
+            DELIM_SPACE_OR_TAG_END)
+    elif state == STATE_AFTER_NAME:
+        # In "<foo bar {{.}}", the hole should be filled with an attribute name.
+        context = (context & ~(STATE_ALL | ATTR_ALL)) | (
+            STATE_ATTR_NAME | ATTR_NONE)
+    return context

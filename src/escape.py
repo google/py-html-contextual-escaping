@@ -119,7 +119,7 @@ class _Analyzer(trace_analysis.Analyzer):
             pipeline = step_value.to_pipeline()
             if pipeline is not None:
                 end_state, esc_modes = (
-                    context_update.escaping_mode_for_hole(start_state))
+                    escaping.esc_mode_for_hole(start_state))
                 self.interps[step_value] = pipeline, esc_modes
                 if context.is_error_context(end_state):
                     self.error(debug_hint, 'hole cannot appear in %s' % (
@@ -249,6 +249,11 @@ class _Analyzer(trace_analysis.Analyzer):
 
     def _escape_body_conditionally(
         self, start_ctx, body, ctx_filter=lambda ctx, analyzer: True):
+        """
+        Speculatively compute the end context of body starting in the given
+        start context, and if the end context passes filter, fold any typing
+        conclusions into self.
+        """
 
         # Derive an analyzer so we can see if our assumptions hold before
         # committing to them.
