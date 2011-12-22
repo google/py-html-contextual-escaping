@@ -627,6 +627,8 @@ def _css_decode_one(match):
 
 
 _ESCAPE_MAP_FOR_HTML = {
+    # The HTML5 parser replaces NULs with the unknown codepoint rune.
+    "\x00": "&#xfffd;",
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
@@ -702,29 +704,29 @@ def _replacer_for_css(match):
     return encoded
 
 
-_MATCHER_FOR_ESCAPE_HTML = re.compile(r'[\x00"&\x27<>]')
+_MATCHER_FOR_ESCAPE_HTML = re.compile(r'[\x00"&\x27+<>`]')
 
-_MATCHER_FOR_ESCAPE_HTML_SQ_ONLY = re.compile(r'[\x00&\x27<>]')
+_MATCHER_FOR_ESCAPE_HTML_SQ_ONLY = re.compile(r'[\x00&\x27+<>`]')
 
-_MATCHER_FOR_ESCAPE_HTML_DQ_ONLY = re.compile(r'[\x00&"<>]')
+_MATCHER_FOR_ESCAPE_HTML_DQ_ONLY = re.compile(r'[\x00&"+<>`]')
 
-_MATCHER_FOR_NORMALIZE_HTML = re.compile(r'[\x00"\x27<>]')
+_MATCHER_FOR_NORMALIZE_HTML = re.compile(r'[\x00"\x27+<>]')
 
 _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
-    ur'[\x00\x08-\x0d"&\x27+/<=>\\\x7f\x85\u2028\u2029]')
+    ur'[\x00\x08-\x0d"&\x27+/<=>\\`\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_STRING = re.compile(
     ur'(?s)(?:\\(.|$)|[\n\r\"\'+<=>&\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
-    ur'[\x00\x08-\x0d"$&-+\--/:<-?\[-^\x7b-\x7d\x7f\x85\u2028\u2029]')
+    ur'[\x00\x08-\x0d"$&-+\--/:<-?\[-^`\x7b-\x7d\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_REGEX = re.compile(
     # A '*' or '/' at the beginning could turn a /{{.}}/ into a comment.
     ur'(?s)(?:^[*]|\\(.|$)|[\n\r+\"\'/<=>&\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
-    ur'[\x00\x08-\x0d"&-*/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
+    ur'[\x00\x08-\x0d"&-*/:->+@\\`\x7b\x7d\x85\xa0\u2028\u2029]')
 
 _FILTER_FOR_FILTER_URL = re.compile(
     r'(?i)^(?:(?:https?|mailto):|[^&:/?#]*(?:[/?#]|$))')

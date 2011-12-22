@@ -141,7 +141,7 @@ class JsTest(unittest.TestCase):
             ("<![CDATA[", r'"\x3c![CDATA["'),
             ("]]>", r'"]]\x3e"'),
             ("</script", r'"\x3c/script"'),
-            (u"\U0001D11E", r'"\ud834\udd1e"'), # or "\uD834\uDD1E"
+            (u"\U0001D11E", r'"\ud834\udd1e"'),
             )
 
         for test_input, want in tests:
@@ -278,7 +278,7 @@ class JsTest(unittest.TestCase):
                  ur"0123456789:;\x3c\x3d\x3e?"
                  ur"@ABCDEFGHIJKLMNO"
                  ur"PQRSTUVWXYZ[\\]^_"
-                 ur"`abcdefghijklmno"
+                 ur"\x60abcdefghijklmno"
                  ur"pqrstuvwxyz{|}~\x7f"
                  u"\u00A0\u0100\\u2028\\u2029\ufeff\U0001D11E"),
                 ),
@@ -292,7 +292,7 @@ class JsTest(unittest.TestCase):
                  ur"0123456789\x3a;\x3c\x3d\x3e\x3f"
                  ur"@ABCDEFGHIJKLMNO"
                  ur"PQRSTUVWXYZ\x5b\\\x5d\x5e_"
-                 ur"`abcdefghijklmno"
+                 ur"\x60abcdefghijklmno"
                  ur"pqrstuvwxyz\x7b\x7c\x7d~\x7f"
                  u"\u00A0\u0100\\u2028\\u2029\ufeff\U0001D11E"),
                 ),

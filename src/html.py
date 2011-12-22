@@ -41,7 +41,7 @@ def unescape_html(html):
     if html.find("&") < 0:
         return html
     return re.sub(
-        '&(?:#(?:x([0-9A-Fa-f]+);|([0-9]+);)|([a-zA-Z0-9]+;?))',
+        '&(?:#(?:[xX]([0-9A-Fa-f]+);|([0-9]+);)|([a-zA-Z0-9]+;?))',
         _decode_html_entity, html)
 
 
@@ -52,15 +52,26 @@ def _decode_html_entity(match):
     """
     group = match.group(1)
     if group:
-        return unichr(int(group, 16))
+        return _unichr(int(group, 16))
     group = match.group(2)
     if group:
-        return unichr(int(group, 10))
+        return _unichr(int(group, 10))
     group = match.group(3)
     return _ENTITY_NAME_TO_EXPANSION.get(
         group,
         # Treat "&noSuchEntity;" as "&noSuchEntity;"
         match.group(0))
+
+
+def _unichr(codepoint):
+    """Like unichr but works with supplemental codepoints."""
+    if codepoint < 0x10000:
+        return unichr(codepoint)
+    # Decode per UTF-16 spec.
+    codepoint -= 0x10000
+    return '%s%s' % (
+        unichr(0xd800 | (codepoint >> 10)),
+        unichr(0xdc00 | (codepoint & 0x3ff)))
 
 
 # Maps entity names (excluding & but including any ;) to codepoints.
