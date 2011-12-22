@@ -3,11 +3,7 @@
 """Unit tests for module escape"""
 
 import content
-import context
-import context_update
-import debug
 import escape
-import escaping
 import sys
 import template
 import unittest
