@@ -7,6 +7,7 @@ import context
 import context_update
 import debug
 import escape
+import escaping
 import sys
 import template
 import unittest
@@ -1688,17 +1689,16 @@ class ContextUpdateTest(unittest.TestCase):
             content.SafeURL('greeting=H%69&addressee=(World)'),
             )
 
-        for n0, m in redundant_funcs:
-            f0 = func_map[n0]
-            for n1, _ in m:
-                f1 = func_map[n1]
-                for _, test_input in inputs:
-                    want = f0(test_input)
-                    got = f1(want)
-                    if want != got:
-                        self.fail(
-                            "%s %s with %T %r: want\n\t%r,\ngot\n\t%r"
-                            % (n0, n1, test_input, test_input, want, got))
+        for fi0, fi1 in escaping.REDUNDANT_ESC_MODES:
+            f0 = escaping.SANITIZER_FOR_ESC_MODE[fi0]
+            f1 = escaping.SANITIZER_FOR_ESC_MODE[fi1]
+            for test_input in inputs:
+                want = f0(test_input)
+                got = f1(want)
+                if want != got:
+                    self.fail(
+                        "%s %s with %r: want\n\t%r,\ngot\n\t%r"
+                        % (f0.__name__, f1.__name__, test_input, want, got))
 
 
 

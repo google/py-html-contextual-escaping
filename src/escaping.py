@@ -91,24 +91,17 @@ ESC_MODE_OPEN_QUOTE = 15
 # One greater than the max of ESC_MODE_*.
 _COUNT_OF_ESC_MODES = 16
 
-HTML_EMBEDDABLE_ESC_MODES = set([
-    ESC_MODE_ESCAPE_HTML,
-    ESC_MODE_ESCAPE_HTML_RCDATA,
-    ESC_MODE_ESCAPE_HTML_ATTRIBUTE,
-    ESC_MODE_FILTER_HTML_ELEMENT_NAME,
-    ESC_MODE_FILTER_HTML_ATTRIBUTE,
-    ESC_MODE_ESCAPE_CSS_STRING,
-    ESC_MODE_ESCAPE_URL,
-    ESC_MODE_ELIDE])
+# Contains pairs such that (f, g) is in this set only (but not necessarily)
+# if g(f(x)) == f(x) for all x.
+REDUNDANT_ESC_MODES = set([
+    (ESC_MODE_ELIDE, ESC_MODE_ESCAPE_HTML_ATTRIBUTE),
+    (ESC_MODE_ELIDE, ESC_MODE_ESCAPE_HTML),
+    (ESC_MODE_ESCAPE_CSS_STRING, ESC_MODE_ESCAPE_HTML_ATTRIBUTE),
+    (ESC_MODE_ESCAPE_JS_REGEX, ESC_MODE_ESCAPE_HTML_ATTRIBUTE),
+    (ESC_MODE_ESCAPE_JS_STRING, ESC_MODE_ESCAPE_HTML_ATTRIBUTE),
+    (ESC_MODE_ESCAPE_URL, ESC_MODE_NORMALIZE_URL),
+    ])
 
-
-CONTENT_KIND_FOR_ESC_MODE = [None for _ in xrange(0, _COUNT_OF_ESC_MODES)]
-CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_ESCAPE_HTML] = content.CONTENT_KIND_HTML
-CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_STRING] = (
-    content.CONTENT_KIND_JS_STR_CHARS)
-CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_NORMALIZE_URL] = content.CONTENT_KIND_URL
-CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_ESCAPE_URL] = content.CONTENT_KIND_URL
-CONTENT_KIND_FOR_ESC_MODE[ESC_MODE_FILTER_URL] = content.CONTENT_KIND_URL
 
 ESC_MODE_FOR_STATE = [None for _ in xrange(0, context.COUNT_OF_STATES)]
 ESC_MODE_FOR_STATE[context.STATE_TEXT] = ESC_MODE_ESCAPE_HTML
@@ -202,7 +195,6 @@ def _strip_html_tags(value):
     Returns a representation of value without tags, HTML comments, or
     other content.
     """
-
     return _HTML_TAG_REGEX.sub("", value)
 
 
@@ -238,6 +230,10 @@ def filter_html_attribute(value):
 
     if type(value) not in (str, unicode):
         value = str(value)
+    if (isinstance(value, content.TypedContent)
+        and value.kind == content.CONTENT_KIND_HTML_ATTR):
+        # TODO: Normalize quotes and surrounding space.
+        return value.content
     value = _filter_html_attribute_helper(value)
     equals_index = value.find('=')
     if equals_index >= 0 and value[-1] not in ('"', "'"):
@@ -283,7 +279,7 @@ def escape_js_string(value):
 
     if (isinstance(value, content.TypedContent)
         and value.kind == content.CONTENT_KIND_JS_STR_CHARS):
-        return value.content
+        return _normalize_js_string_helper(value.content)
     if type(value) not in (str, unicode):
         value = str(value)
     return _escape_js_string_helper(value)
@@ -314,6 +310,15 @@ def escape_js_value(value):
 
     Returns a JavaScript code representation of the input.
     """
+
+    if (isinstance(value, content.TypedContent)
+        and value.kind == content.CONTENT_KIND_JS):
+        value = value.content
+        # We can't allow a value that contains the substring '</script'.
+        # We could try to fixup, but that is problematic.
+        if re.search(r'(?i)</script', value):
+            value = None
+        return value
 
     escaped = json.dumps(
         value,
@@ -354,6 +359,10 @@ def escape_js_regex(value):
 
     Returns an escaped version of value.
     """
+    if (isinstance(value, content.TypedContent)
+        and value.kind == content.CONTENT_KIND_JS_STR_CHARS):
+        return _normalize_js_regex_helper(value.content)
+
     if value is None:
         escaped = ""
     else:
@@ -451,7 +460,10 @@ def filter_url(value):
 
     Returns an escaped version of value.
     """
-
+    if (isinstance(value, content.TypedContent)
+        and value.kind == content.CONTENT_KIND_URL):
+        # Pass through to escape_url or normalize_url with content kind intact.
+        return value
     if value is None:
         value = ""
     elif type(value) not in (str, unicode):
@@ -494,6 +506,10 @@ def escape_css_string(value):
 
     Returns an escaped version of value.
     """
+    if value is None:
+        value = ""
+    elif type(value) not in (str, unicode):
+        value = str(value)
     return _escape_css_string_helper(value)
 
 
@@ -506,6 +522,10 @@ def filter_css_value(value):
 
     Returns a safe CSS identifier part, keyword, or quanitity.
     """
+
+    if (isinstance(value, content.TypedContent)
+        and value.kind == content.CONTENT_KIND_CSS):
+        return value
 
     if value is None:
         value = ""
@@ -613,8 +633,15 @@ _MATCHER_FOR_NORMALIZE_HTML = re.compile(r'[\x00"\x27<>]')
 _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&\x27\/<=>\\\x85\u2028\u2029]')
 
+_MATCHER_FOR_NORMALIZE_JS_STRING = re.compile(
+    ur'[\x00\x08-\x0d"&\x27\/<=>\x85\u2028\u2029]|\\(?![^\n\r\u2028\u2029])')
+
 _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
     ur'[\x00\x08-\x0d"$&-\/:<-?\[-^\x7b-\x7d\x85\u2028\u2029]')
+
+_MATCHER_FOR_NORMALIZE_JS_REGEX = re.compile(
+    ur'[\x00\x08-\x0d"$&-\/:<-?\[\]-^\x7b-\x7d\x85\u2028\u2029]'
+    ur'|\\(?![^\n\r\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&-*\/:->@\\\x7b\x7d\x85\xa0\u2028\u2029]')
@@ -650,9 +677,17 @@ def _escape_js_string_helper(value):
     """ '</script>' -> '\x3c/script\x3e' """
     return _MATCHER_FOR_ESCAPE_JS_STRING.sub(_replacer_for_js, value)
 
+def _normalize_js_string_helper(value):
+    """ '</script>' -> '\x3c/script\x3e' """
+    return _MATCHER_FOR_NORMALIZE_JS_STRING.sub(_replacer_for_js, value)
+
 def _escape_js_regex_helper(value):
     """ '</script>' -> '\x3c\x2fscript\x3e' """
     return _MATCHER_FOR_ESCAPE_JS_REGEX.sub(_replacer_for_js, value)
+
+def _normalize_js_regex_helper(value):
+    """ '</script>' -> '\x3c/script\x3e' """
+    return _MATCHER_FOR_NORMALIZE_JS_REGEX.sub(_replacer_for_js, value)
 
 def _escape_css_string_helper(value):
     """ '</style>' -> '\3c \2f style\3e ' """
@@ -675,19 +710,19 @@ _HTML_TAG_REGEX = re.compile(
     r'(?i)<(?:!|\/?[a-z])(?:[^>\x27"]|"[^"]*"|\x27[^\x27]*\x27)*>')
 
 SANITIZER_FOR_ESC_MODE = [None for _ in xrange(0, _COUNT_OF_ESC_MODES)]
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML ] = escape_html
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML_RCDATA ] = escape_html_rcdata
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_HTML_ATTRIBUTE ] = escape_html_attribute
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_HTML_ELEMENT_NAME ] = (
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_HTML] = escape_html
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_HTML_RCDATA] = escape_html_rcdata
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_HTML_ATTRIBUTE] = escape_html_attribute
+SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_HTML_ELEMENT_NAME] = (
     filter_html_element_name)
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_HTML_ATTRIBUTE ] = filter_html_attribute
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_JS_STRING ] = escape_js_string
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_JS_VALUE ] = escape_js_value
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_JS_REGEX ] = escape_js_regex
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_CSS_STRING ] = escape_css_string
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_CSS_VALUE ] = filter_css_value
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ESCAPE_URL ] = escape_url
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_NORMALIZE_URL ] = normalize_url
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_FILTER_URL ] = filter_url
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_ELIDE ] = elide
-SANITIZER_FOR_ESC_MODE[ ESC_MODE_OPEN_QUOTE ] = open_quote
+SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_HTML_ATTRIBUTE] = filter_html_attribute
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_STRING] = escape_js_string
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_VALUE] = escape_js_value
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_REGEX] = escape_js_regex
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_CSS_STRING] = escape_css_string
+SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_CSS_VALUE] = filter_css_value
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_URL] = escape_url
+SANITIZER_FOR_ESC_MODE[ESC_MODE_NORMALIZE_URL] = normalize_url
+SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_URL] = filter_url
+SANITIZER_FOR_ESC_MODE[ESC_MODE_ELIDE] = elide
+SANITIZER_FOR_ESC_MODE[ESC_MODE_OPEN_QUOTE] = open_quote

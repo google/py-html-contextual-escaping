@@ -1062,10 +1062,19 @@ def escaping_mode_for_hole(context_before):
     delim_type = delim_type_of(context)
     if delim_type != DELIM_NONE:
         # Figure out how to escape the attribute value.
-        if (esc_mode != escaping.ESC_MODE_ESCAPE_HTML
-            and esc_mode not in escaping.HTML_EMBEDDABLE_ESC_MODES):
+        if esc_mode != escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE:
             esc_modes.append(escaping.ESC_MODE_ESCAPE_HTML_ATTRIBUTE)
         if (delim_type_of(context_before) == DELIM_NONE
             and delim_type == DELIM_SPACE_OR_TAG_END):
             esc_modes.append(escaping.ESC_MODE_OPEN_QUOTE)
+
+    last, i = esc_modes[0], 1
+    while i < len(esc_modes):
+        curr = esc_modes[i]
+        if (last, curr) in escaping.REDUNDANT_ESC_MODES:
+            # If, for all x, f(g(x)) == g(x), we can skip f.
+            esc_modes[i:i+1] = []
+        else:
+            last = curr
+            i += 1
     return context, tuple(esc_modes)
