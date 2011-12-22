@@ -1303,8 +1303,6 @@ class ContextUpdateTest(unittest.TestCase):
 
 
     def test_escape_set(self):
-        if True:  # TODO: reenable
-            return
         data = {
             "Children": [
                 {"X": "foo"},
@@ -1343,7 +1341,7 @@ class ContextUpdateTest(unittest.TestCase):
                 # "<b" is not a full tag.
                 "helper": '{{"<a>"}}<b',
             },
-            r"""<a onclick='a = &#34;\x3ca\x3e&#34;<b;'>""",
+            r"""<a onclick='a = &#34;\x3ca\x3e&#34;&lt;b;'>""",
         ),
         # A recursive template that ends in its start context.
         (
