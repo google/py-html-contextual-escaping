@@ -115,7 +115,7 @@ class Env(object):
         Returns an Env containing the builtin function definitions and
         the parsed templates.
         """
-        _parse_templates_into(env=env, loc=loc, code=code, name=name)
+        _parse_templates_into(env=self, loc=loc, code=code, name=name)
         return self
 
 
@@ -343,7 +343,7 @@ class _LiteralNode(ExprNode):
 
     def __init__(self, loc, value):
         ExprNode.__init__(self, loc)
-        if type(value) not in (str, unicode):
+        if type(value) not in (str, unicode, bool, int, long, float):
             value = str(value)
         self.value = value
 
