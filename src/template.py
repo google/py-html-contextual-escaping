@@ -943,7 +943,7 @@ _NUMBER = re.compile(
     '0[xX][0-9A-Fa-f]'
     # Decimal
     '|(?:'
-      # Integer part and optional fraction 
+      # Integer part and optional fraction
       '(?:0+|[1-9][0-9]*)(?:\.[0-9]*)?'
       # Decimal point and mandatory fraction
       '|\.[0-9]+'

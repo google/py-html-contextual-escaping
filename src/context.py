@@ -232,7 +232,7 @@ JS_CTX_ALL = 3 << 12
 def url_part_of(context):
     """
     The URL_PART_* portion of context.
-    
+
     These values describe the part of a URL reference in which context occurs.
 
     We need to distinguish these so that we can:

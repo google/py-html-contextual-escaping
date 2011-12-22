@@ -109,7 +109,7 @@ class ContextUpdateTest(unittest.TestCase):
                 context.STATE_URL | context.DELIM_SINGLE_QUOTE,
                 ),
             (
-                r"""<a href=''""",
+                "<a href=''",
                 context.STATE_TAG,
                 ),
             (
@@ -130,7 +130,7 @@ class ContextUpdateTest(unittest.TestCase):
                 | context.URL_PART_PRE_QUERY,
                 ),
             (
-                r"""<a Href='/""",
+                "<a Href='/",
                 context.STATE_URL | context.DELIM_SINGLE_QUOTE
                 | context.URL_PART_PRE_QUERY,
                 ),
@@ -462,7 +462,7 @@ class ContextUpdateTest(unittest.TestCase):
                 context.STATE_TAG | context.ELEMENT_SCRIPT,
                 ),
             (
-                r"""<script src='foo.js' """,
+                "<script src='foo.js' ",
                 context.STATE_TAG | context.ELEMENT_SCRIPT,
                 ),
             (
@@ -582,7 +582,7 @@ class ContextUpdateTest(unittest.TestCase):
                 context.STATE_ATTR_NAME,
                 ),
             (
-                r"""<a svg:style='""",
+                "<a svg:style='",
                 context.STATE_CSS | context.DELIM_SINGLE_QUOTE,
                 ),
             (
@@ -595,7 +595,7 @@ class ContextUpdateTest(unittest.TestCase):
                 | context.JS_CTX_REGEX,
                 )
             )
-    
+
         for test_case in tests:
             if len(test_case) == 2:
                 test_input, want_ctx = test_case
@@ -692,17 +692,17 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "urlStartRel",
             r"""<a href='{{"/foo/bar?a=b&c=d"}}'>""",
-            r"""<a href='/foo/bar?a=b&amp;c=d'>""",
+            "<a href='/foo/bar?a=b&amp;c=d'>",
         ),
         (
             "urlStartAbsOk",
             r"""<a href='{{"http://example.com/foo/bar?a=b&c=d"}}'>""",
-            r"""<a href='http://example.com/foo/bar?a=b&amp;c=d'>""",
+            "<a href='http://example.com/foo/bar?a=b&amp;c=d'>",
         ),
         (
             "protocolRelativeURLStart",
             r"""<a href='{{"//example.com:8000/foo/bar?a=b&c=d"}}'>""",
-            r"""<a href='//example.com:8000/foo/bar?a=b&amp;c=d'>""",
+            "<a href='//example.com:8000/foo/bar?a=b&amp;c=d'>",
         ),
         (
             "pathRelativeURLStart",
@@ -712,12 +712,12 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "dangerousURLStart",
             r"""<a href='{{"javascript:alert(%22pwned%22)"}}'>""",
-            r"""<a href='#zSafehtmlz'>""",
+            "<a href='#zSafehtmlz'>",
         ),
         (
             "dangerousURLStart2",
             r"""<a href='  {{"javascript:alert(%22pwned%22)"}}'>""",
-            r"""<a href='  #zSafehtmlz'>""",
+            "<a href='  #zSafehtmlz'>",
         ),
         (
             "nonHierURL",
@@ -729,17 +729,17 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "urlPath",
             r"""<a href='http://{{"javascript:80"}}/foo'>""",
-            r"""<a href='http://javascript:80/foo'>""",
+            "<a href='http://javascript:80/foo'>",
         ),
         (
             "urlQuery",
-            r"""<a href='/search?q={{.H}}'>""",
-            r"""<a href='/search?q=%3cHello%3e'>""",
+            "<a href='/search?q={{.H}}'>",
+            "<a href='/search?q=%3cHello%3e'>",
         ),
         (
             "urlFragment",
-            r"""<a href='/faq#{{.H}}'>""",
-            r"""<a href='/faq#%3cHello%3e'>""",
+            "<a href='/faq#{{.H}}'>",
+            "<a href='/faq#%3cHello%3e'>",
         ),
         (
             "urlBranch",
@@ -759,17 +759,17 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "jsNumericValue",
             "<button onclick='alert({{.N}})'>",
-            r"""<button onclick='alert( 42 )'>""",
+            "<button onclick='alert( 42 )'>",
         ),
         (
             "jsBoolValue",
             "<button onclick='alert({{.T}})'>",
-            r"""<button onclick='alert( true )'>""",
+            "<button onclick='alert( true )'>",
         ),
         (
             "jsNilValue",
             "<button onclick='alert(typeof{{.Z}})'>",
-            r"""<button onclick='alert(typeof null )'>""",
+            "<button onclick='alert(typeof null )'>",
         ),
         (
             "jsObjValue",
@@ -817,7 +817,7 @@ class ContextUpdateTest(unittest.TestCase):
             "jsStrNotUnderEscaped",
             "<button onclick='alert({{.C | escape_url}})'>",
             # URL escaped, then quoted for JS.
-            r"""<button onclick='alert(&#34;%3cCincinatti%3e&#34;)'>""",
+            "<button onclick='alert(&#34;%3cCincinatti%3e&#34;)'>",
         ),
         (
             "jsRe",
@@ -910,7 +910,7 @@ class ContextUpdateTest(unittest.TestCase):
         (
             "styleFontNameUnquoted",
             r"""<p style='font-family: {{"Times New Roman"}}'>""",
-            r"""<p style='font-family: Times New Roman'>""",
+            "<p style='font-family: Times New Roman'>",
         ),
         (
             "styleURLQueryEncoded",
@@ -1424,7 +1424,7 @@ class ContextUpdateTest(unittest.TestCase):
         #                       '{{range .Children}}{{template "helper" .}}'
         #                       '{{end}}{{else}}?x={{.X}}{{end}}'),
         #        },
-        #        r"""<a href="/foo?x=foo?x=%3cbar%3e?x=baz">""",
+        #        '<a href="/foo?x=foo?x=%3cbar%3e?x=baz">',
         #    },
         )
 
@@ -1485,7 +1485,7 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             # Missing quote in the else branch.
-            r'''{{if .Cond}}<a href="foo">{{else}}<a href="bar>{{end}}''',
+            '{{if .Cond}}<a href="foo">{{else}}<a href="bar>{{end}}',
             "z:1: {{if}}: branches",
         ),
         (
@@ -1558,10 +1558,10 @@ class ContextUpdateTest(unittest.TestCase):
             "z:1: no such template foo",
         ),
         (
-            r"""{{define "z"}}<div{{template "y"}}>{{end}}""" +
+            '{{define "z"}}<div{{template "y"}}>{{end}}' +
                 # Illegal starting in stateTag but not in stateText.
                 '{{define "y"}} foo<b{{end}}',
-            r'"<" in attribute name: " foo<b"',
+            '"<" in attribute name: " foo<b"',
         ),
         (
             ('{{define "z"}}'
@@ -1591,12 +1591,12 @@ class ContextUpdateTest(unittest.TestCase):
             "exp/template/html:z: \"`\" in unquoted attr: \"`foo\"",
         ),
         (
-            r"""<a style=font:'Arial'>""",
+            "<a style=font:'Arial'>",
             'exp/template/html:z: "\'" in unquoted attr: "font:\'Arial\'"',
         ),
         (
             '<a=foo>',
-            r''': expected space, attr name, or end of tag, but got "=foo>"''',
+            ': expected space, attr name, or end of tag, but got "=foo>"',
         ),
         )
 

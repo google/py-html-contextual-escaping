@@ -13,7 +13,7 @@ import re
 import StringIO
 
 
-REGEX_PRECEDER_KEYWORDS = set([
+_REGEX_PRECEDER_KEYWORDS = set([
     "break", "case", "continue", "delete", "do", "else", "finally",
     "instanceof", "return", "throw", "try", "typeof"])
 
@@ -72,7 +72,7 @@ def is_regex_preceder(js_tokens):
             return True
         # Look for one of the keywords above.
         word = re.search(r'[\w$]+$', js_tokens)
-        return (word and word.group(0)) in REGEX_PRECEDER_KEYWORDS
+        return (word and word.group(0)) in _REGEX_PRECEDER_KEYWORDS
 
 
 def context_union(context0, context1):
@@ -415,7 +415,7 @@ class _TransitionToState(_Transition):
     """
     Transitions to a particular state.
     """
-    
+
     def __init__(self, regex, state):
         """A transition to the given state."""
         _Transition.__init__(self, regex)
@@ -558,7 +558,7 @@ class _RcdataEndTagTransition(_Transition):
     Transition that handles exit from tags like <title> and <textarea>
     which cannot contain tags.
     """
-    
+
     def __init__(self, regex):
         _Transition.__init__(self, regex)
 
@@ -612,68 +612,68 @@ class _DivPreceder(_Transition):
 # matches earliest in the text wins.
 _TRANSITIONS = [None for _ in xrange(0, COUNT_OF_STATES)]
 _TRANSITIONS[STATE_TEXT] = (
-    _TransitionToSelf( r"""^[^<]+""" ),
-    _NormalizeTransition( _ToTransition( r"""<!--""", STATE_HTMLCMT ), "" ),
-    _ToTagTransition( r"""(?i)<script(?=[\s>\/]|$)""", ELEMENT_SCRIPT ),
-    _ToTagTransition( r"""(?i)<style(?=[\s>\/]|$)""", ELEMENT_STYLE ),
-    _ToTagTransition( r"""(?i)<textarea(?=[\s>\/]|$)""",
-                      ELEMENT_TEXTAREA ),
-    _ToTagTransition( r"""(?i)<title(?=[\s>\/]|$)""", ELEMENT_TITLE ),
-    _ToTagTransition( r"""(?i)<xmp(?=[\s>\/]|$)""", ELEMENT_XMP ),
-    _NormalizeTransition( _TransitionToSelf( r"""<(?!/?[A-Za-z]|!DOCTYPE)""" ),
-                          "&lt;" ),
-    _ToTransition( r"""<""", STATE_HTML_BEFORE_TAG_NAME ),
+    _TransitionToSelf(r'^[^<]+'),
+    # Normalizing the '<!--' to '' elides comments from HTML text.
+    _NormalizeTransition(_ToTransition(r'<!--', STATE_HTMLCMT), ""),
+    _ToTagTransition(r'(?i)<script(?=[\s>\/]|$)', ELEMENT_SCRIPT),
+    _ToTagTransition(r'(?i)<style(?=[\s>\/]|$)', ELEMENT_STYLE),
+    _ToTagTransition(r'(?i)<textarea(?=[\s>\/]|$)', ELEMENT_TEXTAREA),
+    _ToTagTransition(r'(?i)<title(?=[\s>\/]|$)', ELEMENT_TITLE),
+    _ToTagTransition(r'(?i)<xmp(?=[\s>\/]|$)', ELEMENT_XMP),
+    _NormalizeTransition(_TransitionToSelf(r'(?i)<(?!/?[A-Z]|!DOCTYPE)'),
+                         "&lt;"),
+    _ToTransition(r'<', STATE_HTML_BEFORE_TAG_NAME),
     )
 _TRANSITIONS[ STATE_RCDATA ] = (
-    _RcdataEndTagTransition( r"""</(\w+)\b""" ),
-    _NormalizeTransition( _TransitionToSelf( r"""<""" ), "&lt;" ),
+    _RcdataEndTagTransition(r'</(\w+)\b'),
+    _NormalizeTransition(_TransitionToSelf(r'<'), "&lt;"),
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[ STATE_HTML_BEFORE_TAG_NAME ] = (
-    _ToTransition( r"""^[A-Za-z]+""", STATE_TAG_NAME ),
-    _ToTransition( r"""^(?=[^A-Za-z])""", STATE_TEXT ),
+    _ToTransition(r'^[A-Za-z]+', STATE_TAG_NAME),
+    _ToTransition(r'^(?=[^A-Za-z])', STATE_TEXT),
     )
 _TRANSITIONS[ STATE_TAG_NAME ] = (
-    _TransitionToSelf( r"""^[A-Za-z0-9:-]*(?:[A-Za-z0-9]|$)""" ),
-    _ToTagTransition( r"""^(?=[\/\s>])""", ELEMENT_NONE ),
+    _TransitionToSelf(r'^[A-Za-z0-9:-]*(?:[A-Za-z0-9]|$)'),
+    _ToTagTransition(r'^(?=[\/\s>])', ELEMENT_NONE),
     )
 _TRANSITIONS[ STATE_TAG ] = (
     # Allows "data-foo" and other dashed attribute names, but
     # intentionally disallows "--" as an attribute name so that a tag ending
     # after a value-less attribute named "--" cannot be confused with a HTML
     # comment end ("-->").
-    _TransitionToAttrName( r"""^\s*([A-Za-z][\w:-]*)""" ),
-    _TagDoneTransition( r"""^\s*\/?>""" ),
-    _TransitionToSelf( r"""^\s+$""" ),
+    _TransitionToAttrName(r'^\s*([A-Za-z][\w:-]*)'),
+    _TagDoneTransition(r'^\s*\/?>'),
+    _TransitionToSelf(r'^\s+$'),
     )
 _TRANSITIONS[ STATE_ATTR_NAME ] = (
-    _TransitionToSelf( r"""[A-Za-z0-9-]+""" ),
+    _TransitionToSelf(r'[A-Za-z0-9-]+'),
     # For a value-less attribute, make an epsilon transition back to the tag
     # body context to look for a tag end or another attribute name.
-    _TransitionToState( r"""^""", STATE_AFTER_NAME ),
+    _TransitionToState(r'^', STATE_AFTER_NAME),
     )
 _TRANSITIONS[ STATE_AFTER_NAME ] = (
-    _TransitionToState( r"""^\s*=""", STATE_BEFORE_VALUE ),
-    _TransitionToSelf( r"""^\s+""" ),
-    _TransitionBackToTag( r"""^""" ),
+    _TransitionToState(r'^\s*=', STATE_BEFORE_VALUE),
+    _TransitionToSelf(r'^\s+'),
+    _TransitionBackToTag(r'^'),
     )
 _TRANSITIONS[ STATE_BEFORE_VALUE ] = (
-    _TransitionToAttrValue( r"""^\s*[\"]""", DELIM_DOUBLE_QUOTE ),
-    _TransitionToAttrValue( r"""^\s*\'""", DELIM_SINGLE_QUOTE ),
-    _TransitionToAttrValue( r"""^(?=[^\"\'\s>])""",  # Unquoted value start.
-                           DELIM_SPACE_OR_TAG_END ),
+    _TransitionToAttrValue(r'^\s*["]', DELIM_DOUBLE_QUOTE),
+    _TransitionToAttrValue(r'^\s*\'', DELIM_SINGLE_QUOTE),
+    _TransitionToAttrValue(r'^(?=[^\"\'\s>])',  # Unquoted value start.
+                           DELIM_SPACE_OR_TAG_END),
     # Epsilon transition back if there is an empty value followed by an
     # obvious attribute name or a tag end.
     # The first branch handles the blank value in:
     #    <input value=>
     # and the second handles the blank value in:
     #    <input value= name=foo>
-    _TransitionBackToTag( r"""^(?=>|\s+[A-Za-z][A-Za-z0-9-]*\s*=)""" ),
-    _TransitionToSelf( r"""^\s+""" ),
+    _TransitionBackToTag(r'^(?=>|\s+[A-Za-z][A-Za-z0-9-]*\s*=)'),
+    _TransitionToSelf(r'^\s+'),
     )
 _TRANSITIONS[ STATE_HTMLCMT ] = (
-    _NormalizeTransition( _ToTransition( r"""-->""", STATE_TEXT ), "", True ),
-    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
+    _NormalizeTransition(_ToTransition(r'-->', STATE_TEXT), "", True),
+    _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
 _TRANSITIONS[ STATE_ATTR ] = (
     _TRANSITION_TO_SELF,
@@ -682,76 +682,76 @@ _TRANSITIONS[ STATE_ATTR ] = (
 # http://www.w3.org/TR/css3-syntax/#lexical
 _TRANSITIONS[ STATE_CSS ] = (
     _NormalizeTransition(
-        _TransitionToState( r"""\/\*""", STATE_CSSBLOCK_CMT ),
-        " " ),
+        _TransitionToState(r'\/\*', STATE_CSSBLOCK_CMT),
+        " "),
     # Non-standard but widely supported.
     _NormalizeTransition(
-        _TransitionToState( r"""\/\/""", STATE_CSSLINE_CMT ), "" ),
-    _TransitionToState( r"""[\"]""", STATE_CSSDQ_STR ),
-    _TransitionToState( r"""\'""", STATE_CSSSQ_STR ),
-    _CssUriTransition( r"""(?i)\burl\s*\(\s*([\"\']?)""" ),
+        _TransitionToState(r'\/\/', STATE_CSSLINE_CMT), ""),
+    _TransitionToState(r'["]', STATE_CSSDQ_STR),
+    _TransitionToState(r'[\']', STATE_CSSSQ_STR),
+    _CssUriTransition(r'(?i)\burl\s*\(\s*([\"\']?)'),
     _STYLE_TAG_END,
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[ STATE_CSSBLOCK_CMT ] = (
     _NormalizeTransition(
-        _TransitionToState( r"""\*\/""", STATE_CSS ), "", True ),
+        _TransitionToState(r'\*\/', STATE_CSS), "", True),
     _NormalizeTransition(
         _STYLE_TAG_END,
-        "</style", True ),
-    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
+        "</style", True),
+    _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
 _TRANSITIONS[ STATE_CSSLINE_CMT ] = (
     _NormalizeTransition(
-        _TransitionToState( r"""[\n\f\r]""", STATE_CSS ),
-        "\n", True ),
+        _TransitionToState(r'[\n\f\r]', STATE_CSS),
+        "\n", True),
     _NormalizeTransition(
         _STYLE_TAG_END,
-        "</style", True ),
-    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
+        "</style", True),
+    _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
 _TRANSITIONS[ STATE_CSSDQ_STR ] = (
-    _TransitionToState( r"""[\"]""", STATE_CSS ),
+    _TransitionToState(r'["]', STATE_CSS),
     # Line continuation or escape.
-    _TransitionToSelf( r"""\\(?:\r\n?|[\n\f\"])""" ),
+    _TransitionToSelf(r'\\(?:\r\n?|[\n\f\"])'),
     _CSSURL_PART_TRANSITION,
-    _ToTransition( r"""[\n\r\f]""", STATE_ERROR ),
+    _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,  # TODO: Make this an error transition?
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[ STATE_CSSSQ_STR ] = (
-    _TransitionToState( r"""\'""", STATE_CSS ),
+    _TransitionToState(r'[\']', STATE_CSS),
     # Line continuation or escape.
-    _TransitionToSelf( r"""\\(?:\r\n?|[\n\f\'])""" ),
+    _TransitionToSelf(r'\\(?:\r\n?|[\n\f\'])'),
     _CSSURL_PART_TRANSITION,
-    _ToTransition( r"""[\n\r\f]""", STATE_ERROR ),
+    _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,  # TODO: Make this an error transition?
     )
 _TRANSITIONS[ STATE_CSS_URL ] = (
-    _TransitionToState( r"""[\\)\s]""", STATE_CSS ),
+    _TransitionToState(r'[\\)\s]', STATE_CSS),
     _CSSURL_PART_TRANSITION,
-    _TransitionToState( r"""[\"\']""", STATE_ERROR ),
+    _TransitionToState(r'[\"\']', STATE_ERROR),
     _STYLE_TAG_END,
     )
 _TRANSITIONS[ STATE_CSSSQ_URL ] = (
-    _TransitionToState( r"""\'""", STATE_CSS ),
+    _TransitionToState(r'[\']', STATE_CSS),
     _CSSURL_PART_TRANSITION,
     # Line continuation or escape.
-    _TransitionToSelf( r"""\\(?:\r\n?|[\n\f\'])""" ),
-    _ToTransition( r"""[\n\r\f]""", STATE_ERROR ),
+    _TransitionToSelf(r'\\(?:\r\n?|[\n\f\'])'),
+    _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,
     )
 _TRANSITIONS[ STATE_CSSDQ_URL ] = (
-    _TransitionToState( r"""[\"]""", STATE_CSS ),
+    _TransitionToState(r'["]', STATE_CSS),
     _CSSURL_PART_TRANSITION,
     # Line continuation or escape.
-    _TransitionToSelf( r"""\\(?:\r\n?|[\n\f\"])""" ),
-    _ToTransition( r"""[\n\r\f]""", STATE_ERROR ),
+    _TransitionToSelf(r'\\(?:\r\n?|[\n\f\"])'),
+    _ToTransition(r'[\n\r\f]', STATE_ERROR),
     _STYLE_TAG_END,
     )
 _TRANSITIONS[ STATE_JS ] = (
     _NormalizeTransition(
-        _TransitionToState( r"""/[*]""", STATE_JSBLOCK_CMT ),
+        _TransitionToState(r'/[*]', STATE_JSBLOCK_CMT),
         # We need at least one space to prevent blurring of boundaries.
         #     1-/**/-1
         # should remain the token sequence
@@ -764,35 +764,33 @@ _TRANSITIONS[ STATE_JS ] = (
         #     x < /script|foo/i . match ( s ) [ 0 ]
         # and not become the invalid token sequence
         #     x </script ...
-        " " ),
-    _NormalizeTransition(
-        _TransitionToState( r"""//""", STATE_JSLINE_CMT ),
-        "" ),
-    _TransitionToJsString( r"""[\"]""", STATE_JSDQ_STR ),
-    _TransitionToJsString( r"""\'""", STATE_JSSQ_STR ),
-    _SlashTransition( r"""/""" ),
+        " "),
+    _NormalizeTransition(_TransitionToState(r'//', STATE_JSLINE_CMT), ""),
+    _TransitionToJsString(r'["]', STATE_JSDQ_STR),
+    _TransitionToJsString(r'[\']', STATE_JSSQ_STR),
+    _SlashTransition(r'/'),
     # Shuffle words, punctuation (besides /), and numbers off to an
     # analyzer which does a quick and dirty check to update
     # is_regex_preceder.
-    _JsPuncTransition( r"""(?i)(?:[^<\/\"\'\s\\]|<(?!\/script))+""" ),
-    _TransitionToSelf( r"""\s+""" ),  # Space
+    _JsPuncTransition(r'(?i)(?:[^<\/\"\'\s\\]|<(?!\/script))+'),
+    _TransitionToSelf(r'\s+'),  # Space
     _SCRIPT_TAG_END,
     )
 _TRANSITIONS[ STATE_JSBLOCK_CMT ] = (
     _NormalizeJsBlockCommentTransition(
-        _TransitionToState( r"""[*]/""", STATE_JS ) ),
-    _NormalizeTransition( _SCRIPT_TAG_END, "</script", True ),
-    _NormalizeJsBlockCommentTransition( _TRANSITION_TO_SELF ),
+        _TransitionToState(r'[*]/', STATE_JS)),
+    _NormalizeTransition(_SCRIPT_TAG_END, "</script", True),
+    _NormalizeJsBlockCommentTransition(_TRANSITION_TO_SELF),
     )
 # Line continuations are not allowed in line comments.
 _TRANSITIONS[ STATE_JSLINE_CMT ] = (
-    _NormalizeTransition( _TransitionToState( "[%s]" % NLS, STATE_JS ),
-                          "\n", True ),
-    _NormalizeTransition( _SCRIPT_TAG_END, "</script", True ),
-    _NormalizeTransition( _TRANSITION_TO_SELF, "", True ),
+    _NormalizeTransition(_TransitionToState("[%s]" % NLS, STATE_JS),
+                         "\n", True),
+    _NormalizeTransition(_SCRIPT_TAG_END, "</script", True),
+    _NormalizeTransition(_TRANSITION_TO_SELF, "", True),
     )
 _TRANSITIONS[ STATE_JSDQ_STR ] = (
-    _DivPreceder( r"""[\"]""" ),
+    _DivPreceder(r'["]'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
         "(?i)" +                      # Case-insensitively
@@ -804,10 +802,10 @@ _TRANSITIONS[ STATE_JSDQ_STR ] = (
                 "|<(?!/script)" +     # or non-closing less-than.
             ")" +
             "|<(?!/script)" +
-        ")+" ),
+        ")+"),
     )
 _TRANSITIONS[ STATE_JSSQ_STR ] = (
-    _DivPreceder( r"""\'""" ),
+    _DivPreceder(r'[\']'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
         "(?i)^(?:" +                   # Case-insensitively, from start
@@ -818,10 +816,10 @@ _TRANSITIONS[ STATE_JSSQ_STR ] = (
                 "|<(?!/script)" +      # or non-closing less-than.
             ")" +
             "|<(?!/script)" +
-        ")+" ),
+        ")+"),
     )
 _TRANSITIONS[ STATE_JSREGEXP ] = (
-    _DivPreceder( r"""/""" ),
+    _DivPreceder(r'/'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
         "^(?:" +
@@ -835,13 +833,13 @@ _TRANSITIONS[ STATE_JSREGEXP ] = (
                 "|\\\\(?:[^" + NLS + "]))*" +  # and escapes;
                 "|\\\\?<(?!/script)" +  # or non-closing angle less-than.
             "\\]" +
-        ")+" ),
+        ")+"),
     )
     # TODO: Do we need to recognize URL attributes that start with
     # javascript:, data:text/html, etc. and transition to JS instead
     # with a second layer of percent decoding triggered by a protocol
     # in (DATA, JAVASCRIPT, NONE) added to Context?
-_TRANSITIONS[ STATE_URL ] = ( _URL_PART_TRANSITION, )
+_TRANSITIONS[ STATE_URL ] = (_URL_PART_TRANSITION,)
 
 _TRANSITIONS = tuple(_TRANSITIONS)
 
@@ -909,9 +907,9 @@ def process_raw_text(raw_text, context):
 
     while raw_text:
         prior_context, prior_raw_text = context, raw_text
-        
+
         delim_type = delim_type_of(context)
-        
+
         # If we are in an attribute value, then decode raw_text (except
         # for the delimiter) up to the next occurrence of delimiter.
 
