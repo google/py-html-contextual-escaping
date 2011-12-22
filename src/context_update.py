@@ -393,9 +393,10 @@ class _SlashTransition(_Transition):
         elif js_slash == JS_CTX_REGEX:
             return (prior & ~(STATE_ALL | JS_CTX_ALL)) | STATE_JSREGEXP
         else:
-            raise Exception(
-                ("Ambiguous / could be a RegExp or division.  " +
-                 "Please add parentheses before `%s`") % match.group(0))
+            raise ContextUpdateFailure(
+                ("ambiguous / could start a division or a RegExp."
+                 "  Please parenthesize near `%s`.")
+                % match.string[match.start():])
 
 
 class _JsPuncTransition(_Transition):
@@ -835,6 +836,9 @@ def process_raw_text(raw_text, context):
       a normalized version of the text or None if an error occurred,
       None or the context immediately prior to the error,
       None or the unprocessed suffix of raw_text when the error occurred)
+
+    May raise ContextUpdateFailure which is equivalent to returning
+    STATE_ERROR but with a more informative error message.
     """
 
     normalized = StringIO.StringIO()
@@ -948,6 +952,15 @@ def process_raw_text(raw_text, context):
         if is_error_context(context):
             return context, None, prior_context, prior_raw_text
     return context, normalized.getvalue(), None, None
+
+
+class ContextUpdateFailure(BaseException):
+    """
+    Raised on failure to update context to carry an informative error message
+    when STATE_ERROR doesn't cut it.
+    """
+    def __init__(self, msg):
+        BaseException.__init__(self, msg)
 
 
 # TODO: If we need to deal with untrusted templates, then we need to make

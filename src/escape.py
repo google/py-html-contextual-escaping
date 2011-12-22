@@ -52,7 +52,7 @@ def escape(name_to_body, public_template_names, start_state=context.STATE_TEXT):
             # safe.
             analyzer.error(
                 None,
-                'template %s does not end in the same context it starts: %s'
+                'template %s does not start and end in the same context: %s'
                 % (name, debug.context_to_string(end_state)))
             has_errors = True
 
@@ -106,24 +106,33 @@ class _Analyzer(trace_analysis.Analyzer):
             # Handle text nodes specified by the template author.
             raw_content = step_value.to_raw_content()
             if raw_content is not None:
-                end_state, new_content, error_ctx, error_text = (
-                    context_update.process_raw_text(raw_content, start_state))
-                if context.is_error_context(end_state):
-                    self.error(debug_hint, 'bad content in %s: `%s`' % (
-                        debug.context_to_string(error_ctx), error_text))
-                elif new_content != raw_content:
-                    self.text_values[step_value] = new_content
+                try:
+                    end_state, new_content, error_ctx, error_text = (
+                        context_update.process_raw_text(
+                            raw_content, start_state))
+                    if context.is_error_context(end_state):
+                        self.error(debug_hint, 'bad content in %s: `%s`' % (
+                            debug.context_to_string(error_ctx), error_text))
+                    elif new_content != raw_content:
+                        self.text_values[step_value] = new_content
+                except context_update.ContextUpdateFailure, e:
+                    self.error(debug_hint, str(e))
+                    end_state = context.STATE_ERROR
                 return end_state
         if hasattr(step_value, 'to_pipeline'):
             # Handle interpolation of untrusted values.
             pipeline = step_value.to_pipeline()
             if pipeline is not None:
-                end_state, esc_modes = (
+                end_state, esc_modes, problem = (
                     escaping.esc_mode_for_hole(start_state))
                 self.interps[step_value] = pipeline, esc_modes
                 if context.is_error_context(end_state):
-                    self.error(debug_hint, 'hole cannot appear in %s' % (
-                        debug.context_to_string(start_state)))
+                    if problem is None:
+                        self.error(debug_hint, 'hole cannot appear in %s' % (
+                            debug.context_to_string(start_state)))
+                    else:
+                        self.error(debug_hint, problem)
+                        
                 return end_state
         if hasattr(step_value, 'to_callee'):
             # Handle calls to other templates by recursively typing the end
@@ -162,7 +171,7 @@ class _Analyzer(trace_analysis.Analyzer):
             return end_context
         body = self.name_to_body.get(tmpl_name)
         if body is None:
-            self.error(debug_hint, 'No such template %s' % tmpl_name)
+            self.error(debug_hint, 'no such template %s' % tmpl_name)
             return context.STATE_ERROR
         if start_ctx != self.start_state:
             # Derive a copy so that calls and pipelines can be written
