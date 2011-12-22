@@ -192,49 +192,41 @@ class ContextUpdateTest(unittest.TestCase):
                 ),
             (
                 '<a onclick="',
-                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE,
                 ),
             (
                 '<a onclick="//foo',
-                context.STATE_JSLINE_CMT | context.DELIM_DOUBLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JSLINE_CMT | context.DELIM_DOUBLE_QUOTE,
                 '<a onclick="',
                 ),
             (
                 "<a onclick='//\n",
-                context.STATE_JS | context.DELIM_SINGLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE,
                 "<a onclick='\n",
                 ),
             (
                 "<a onclick='//\r\n",
-                context.STATE_JS | context.DELIM_SINGLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE,
                 "<a onclick='\n\n",  # \n\n is ok, \n is ok, \r\n is ok
                 ),
             (
                 u"<a onclick='//\u2028",
-                context.STATE_JS | context.DELIM_SINGLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.DELIM_SINGLE_QUOTE,
                 "<a onclick='\n",
                 ),
             (
                 '<a onclick="/*',
-                context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE,
                 '<a onclick=" ',
                 ),
             (
                 '<a onclick="/*/',
-                context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JSBLOCK_CMT | context.DELIM_DOUBLE_QUOTE,
                 '<a onclick=" ',
                 ),
             (
                 '<a onclick="/**/',
-                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE,
                 '<a onclick=" ',
                 ),
             (
@@ -297,8 +289,7 @@ class ContextUpdateTest(unittest.TestCase):
                 ),
             (
                 '<script>/foo/ /=',
-                context.STATE_JS | context.ELEMENT_SCRIPT
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.ELEMENT_SCRIPT,
                 ),
             (
                 '<a onclick="1 /foo',
@@ -486,13 +477,11 @@ class ContextUpdateTest(unittest.TestCase):
                 ),
             (
                 '<script>document.write("<p>foo</p>");',
-                context.STATE_JS | context.ELEMENT_SCRIPT
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.ELEMENT_SCRIPT,
                 ),
             (
                 r'<script>document.write("<p>foo<\/script>");',
-                context.STATE_JS | context.ELEMENT_SCRIPT
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.ELEMENT_SCRIPT,
                 ),
             (
                 '<script>document.write("<script>alert(1)</script>");',
@@ -500,8 +489,7 @@ class ContextUpdateTest(unittest.TestCase):
                 ),
             (
                 '<Script>',
-                context.STATE_JS | context.ELEMENT_SCRIPT
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.ELEMENT_SCRIPT,
                 ),
             (
                 '<SCRIPT>foo',
@@ -591,8 +579,7 @@ class ContextUpdateTest(unittest.TestCase):
                 ),
             (
                 '<svg:a svg:onclick="',
-                context.STATE_JS | context.DELIM_DOUBLE_QUOTE
-                | context.JS_CTX_REGEX,
+                context.STATE_JS | context.DELIM_DOUBLE_QUOTE,
                 )
             )
 
