@@ -602,7 +602,8 @@ class ContextUpdateTest(unittest.TestCase):
                 want_text = test_input
             else:
                 test_input, want_ctx, want_text = test_case
-            got_ctx, got_text = context_update.process_raw_text(test_input, 0)
+            got_ctx, got_text, _, _ = context_update.process_raw_text(
+                test_input, 0)
             if got_ctx != want_ctx:
                 self.fail("input %r: want context\n\t%s\ngot\n\t%s"
                           % (test_input, debug.context_to_string(want_ctx),
@@ -1502,19 +1503,24 @@ class ContextUpdateTest(unittest.TestCase):
         ),
         (
             "{{range .Items}}<a{{end}}",
-            r'''z:1: on range loop re-entry: "<" in attribute name: "<a"''',
+            # TODO: Ideally this should mention that the problem occurs on
+            # loop re-entry.
+            'z:1: bad content in [Context STATE_TAG_NAME]: `<a`',
         ),
         (
             "\n{{range .Items}} x='<a{{end}}",
-            "z:2: on range loop re-entry: {{range}} branches",
+            ('z:2: {{range}}: loop switches between states'
+             ' ([Context STATE_TAG_NAME],'
+             ' [Context STATE_ATTR DELIM_SINGLE_QUOTE])'),
         ),
         (
             "<a b=1 c={{.H}}",
-            "z: ends in a non-text context: {stateAttr delimSpaceOrTagEnd",
+            ('template t does not end in the same context it starts:'
+             ' [Context STATE_ATTR DELIM_SPACE_OR_TAG_END]'),
         ),
         (
             "<script>foo();",
-            "z: ends in a non-text context: {stateJS",
+            "template t does not end in the same context it starts",
         ),
         (
             '<a href="{{if .F}}/foo?a={{else}}/bar/{{end}}{{.H}}">',

@@ -239,6 +239,7 @@ class _Transition(object):
         assert self
         return match.string[:match.end()]
 
+
 class _ToTransition(_Transition):
     """
     A transition to a given context.
@@ -252,6 +253,7 @@ class _ToTransition(_Transition):
     def compute_next_context(self, prior, match):
         return self.dest
 
+
 class _ToTagTransition(_Transition):
     """
     A transition to a context in the body of an open tag for the given
@@ -264,6 +266,7 @@ class _ToTagTransition(_Transition):
 
     def compute_next_context(self, prior, match):
         return STATE_TAG | self.el_type
+
 
 class _NormalizeTransition(_Transition):
     """
@@ -287,6 +290,7 @@ class _NormalizeTransition(_Transition):
             return self.repl
         else:
             return ''.join((match.string[:match.start()], self.repl))
+
 
 class _NormalizeJsBlockCommentTransition(_NormalizeTransition):
     """
@@ -333,6 +337,7 @@ _TAG_DONE_ELEMENT_TO_PARTIAL_CONTEXT = {
     ELEMENT_XMP: STATE_RCDATA,
     }
 
+
 class _TagDoneTransition(_Transition):
     """
     Transitions from the end of a tag to the content-type appropriate to its
@@ -346,6 +351,7 @@ class _TagDoneTransition(_Transition):
         el_type = element_type_of(prior)
         return _TAG_DONE_ELEMENT_TO_PARTIAL_CONTEXT[el_type] | el_type
 
+
 class _TransitionBackToTag(_Transition):
     """
     A transition back to a context in the body of an open tag.
@@ -356,6 +362,7 @@ class _TransitionBackToTag(_Transition):
 
     def compute_next_context(self, prior, match):
         return STATE_TAG | element_type_of(prior)
+
 
 class _TransitionToAttrName(_Transition):
     """
@@ -390,6 +397,7 @@ class _TransitionToAttrName(_Transition):
             attr = ATTR_URL
         return STATE_ATTR_NAME | element_type_of(prior) | attr
 
+
 class _TransitionToAttrValue(_Transition):
     """
     A transition to a context in the name of an attribute of the given type.
@@ -416,6 +424,7 @@ class _TransitionToState(_Transition):
     def compute_next_context(self, prior, match):
         return (prior & ~(URL_PART_ALL | STATE_ALL)) | self.state
 
+
 class _TransitionToJsString(_Transition):
     """
     Transitions to a JS string state.
@@ -430,6 +439,7 @@ class _TransitionToJsString(_Transition):
         return (
             (prior & (ELEMENT_ALL | ATTR_ALL | DELIM_ALL))
             | self.state)
+
 
 class _SlashTransition(_Transition):
     """
@@ -453,6 +463,7 @@ class _SlashTransition(_Transition):
                 ("Ambiguous / could be a RegExp or division.  " +
                  "Please add parentheses before `%s`") % match.group(0))
 
+
 class _JsPuncTransition(_Transition):
     """
     Keeps JS context bits up-to-date.
@@ -468,6 +479,7 @@ class _JsPuncTransition(_Transition):
             js_slash = JS_CTX_DIV_OP
         return (prior & ~JS_CTX_ALL) | js_slash
 
+
 class _TransitionToSelf(_Transition):
     """A transition that consumes some content without changing state."""
     def __init__(self, regex):
@@ -476,9 +488,11 @@ class _TransitionToSelf(_Transition):
     def compute_next_context(self, prior, match):
         return prior
 
+
 # Consumes the entire content without change if nothing else matched.
 _TRANSITION_TO_SELF = _TransitionToSelf(r'$')
 # Matching at the end is lowest possible precedence.
+
 
 class _URLPartTransition(_Transition):
     """
@@ -503,6 +517,7 @@ class _URLPartTransition(_Transition):
             url_part = URL_PART_QUERY_OR_FRAG
         return (prior & ~URL_PART_ALL) | url_part
 
+
 _URL_PART_TRANSITION = _URLPartTransition(r'([?#])|$')
 _CSSURL_PART_TRANSITION = _URLPartTransition(
     r'([?#]|\\(?:23|3[fF]|[?#]))|$')
@@ -526,6 +541,7 @@ class _EndTagTransition(_Transition):
     def is_applicable_to(self, prior, match):
         return attr_type_of(prior) == ATTR_NONE
 
+
 _SCRIPT_TAG_END = _EndTagTransition(r'(?i)<\/script\b')
 _STYLE_TAG_END = _EndTagTransition(r'(?i)<\/style\b')
 
@@ -535,6 +551,7 @@ _ELEMENT_TO_TAG_NAME = {
     ELEMENT_LISTING: "listing",
     ELEMENT_XMP: "xmp",
     }
+
 
 class _RcdataEndTagTransition(_Transition):
     """
@@ -552,6 +569,7 @@ class _RcdataEndTagTransition(_Transition):
         return (
             match.group(1).lower()
             == _ELEMENT_TO_TAG_NAME.get(element_type_of(prior)))
+
 
 class _CssUriTransition(_Transition):
     """
@@ -588,12 +606,10 @@ class _DivPreceder(_Transition):
         return ((prior & ~(STATE_ALL | JS_CTX_ALL))
                 | STATE_JS | JS_CTX_DIV_OP)
 
-# For each state, a group of rules for consuming raw text and how that
-# affects the document
-# context.
+
+# For each state, a group of token definitions and transitions to other states.
 # The rules each have an associated pattern, and the rule whose pattern
-# matches earliest in the
-# text wins.
+# matches earliest in the text wins.
 _TRANSITIONS = [None for _ in xrange(0, COUNT_OF_STATES)]
 _TRANSITIONS[STATE_TEXT] = (
     _TransitionToSelf( r"""^[^<]+""" ),
@@ -882,12 +898,18 @@ def process_raw_text(raw_text, context):
     raw_text - A chunk of HTML/CSS/JS.
     context - The context before raw_text.
 
-    Returns the context after raw_text, and a normalized version of the text.
+    Returns (
+      the context after raw_text which may be an error context,
+      a normalized version of the text or None if an error occurred,
+      None or the context immediately prior to the error,
+      None or the unprocessed suffix of raw_text when the error occurred)
     """
 
     normalized = StringIO.StringIO()
 
     while raw_text:
+        prior_context, prior_raw_text = context, raw_text
+        
         delim_type = delim_type_of(context)
         
         # If we are in an attribute value, then decode raw_text (except
@@ -991,7 +1013,9 @@ def process_raw_text(raw_text, context):
                 if attr_value_end != len(raw_text):
                     raise Exception()  # Illegal state.
                 raw_text = ""
-    return context, normalized.getvalue()
+        if is_error_context(context):
+            return context, None, prior_context, prior_raw_text
+    return context, normalized.getvalue(), None, None
 
 
 # TODO: If we need to deal with untrusted templates, then we need to make

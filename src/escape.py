@@ -52,7 +52,8 @@ def escape(name_to_body, public_template_names, start_state=context.STATE_TEXT):
             # safe.
             analyzer.error(
                 None,
-                'template %s does not end in the same context it starts' % name)
+                'template %s does not end in the same context it starts: %s'
+                % (name, debug.context_to_string(end_state)))
             has_errors = True
 
     if has_errors:
@@ -102,17 +103,19 @@ class _Analyzer(trace_analysis.Analyzer):
             # Simplifies error checking below.
             return start_state
         if hasattr(step_value, 'to_raw_content'):
+            # Handle text nodes specified by the template author.
             raw_content = step_value.to_raw_content()
             if raw_content is not None:
-                end_state, new_content = context_update.process_raw_text(
-                    raw_content, start_state)
+                end_state, new_content, error_ctx, error_text = (
+                    context_update.process_raw_text(raw_content, start_state))
                 if context.is_error_context(end_state):
                     self.error(debug_hint, 'bad content in %s: `%s`' % (
-                        debug.context_to_string(start_state), raw_content))
-                if new_content != raw_content:
+                        debug.context_to_string(error_ctx), error_text))
+                elif new_content != raw_content:
                     self.text_values[step_value] = new_content
                 return end_state
         if hasattr(step_value, 'to_pipeline'):
+            # Handle interpolation of untrusted values.
             pipeline = step_value.to_pipeline()
             if pipeline is not None:
                 end_state, esc_modes = (
@@ -123,6 +126,8 @@ class _Analyzer(trace_analysis.Analyzer):
                         debug.context_to_string(start_state)))
                 return end_state
         if hasattr(step_value, 'to_callee'):
+            # Handle calls to other templates by recursively typing the end
+            # context of that template.
             callee = step_value.to_callee()
             if callee is not None:
                 end_ctx = self.external_call(callee, start_state, debug_hint)
@@ -170,7 +175,7 @@ class _Analyzer(trace_analysis.Analyzer):
         for state in states:
             if context.is_error_context(state):
                 return state
-        self.error(debug_hint, 'loop oscillates between states (%s)' % (
+        self.error(debug_hint, 'loop switches between states (%s)' % (
             ', '.join([debug.context_to_string(state) for state in states])))
         return context.STATE_ERROR
 
