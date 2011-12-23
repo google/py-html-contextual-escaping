@@ -5,12 +5,17 @@
 import content
 import escaping
 import html
+import test_common
 import unittest
 
 class HtmlTest(unittest.TestCase):
     """Testcases for module html"""
 
     def test_unescape_html(self):
+        """
+        Test unescape_html on corner cases like supplemental codepoints,
+        re-escaping, broken escapes, etc.
+        """
         self.assertEquals('', html.unescape_html(''))
         self.assertEquals('foo', html.unescape_html('foo'))
         self.assertEquals('foo<bar', html.unescape_html('foo&lt;bar'))
@@ -30,18 +35,11 @@ class HtmlTest(unittest.TestCase):
         self.assertEquals(
             u"\U0001D11E\U0001D11E",
             html.unescape_html('&#x1d11e;&#xd834;&#xdd1e;'))
+        self.assertEquals("&#;&#gt;&#xxa0;", "&#;&#gt;&#xxa0;")
 
     def test_escape_html(self):
-        test_input = (
-            u"\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f"
-            u"\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
-            u' !"#$%&\'()*+,-./'
-            u'0123456789:;<=>?'
-            u'@ABCDEFGHIJKLMNO'
-            u'PQRSTUVWXYZ[\\]^_'
-            u'`abcdefghijklmno'
-            u'pqrstuvwxyz{|}~\x7f'
-            u'\u00A0\u0100\u2028\u2029\ufeff\ufdec\U0001D11E')
+        """Test escape HTML on selected codepoints."""
+        test_input = test_common.ASCII_AND_SELECTED_CODEPOINTS
 
         want = (
             u'&#xfffd;\x01\x02\x03\x04\x05\x06\x07'
@@ -54,7 +52,7 @@ class HtmlTest(unittest.TestCase):
             u'PQRSTUVWXYZ[\]^_'
             u'&#96;abcdefghijklmno'
             u'pqrstuvwxyz{|}~\x7f'
-            u'\u00A0\u0100\u2028\u2029\ufeff\ufdec\U0001D11E')
+            u'\u00A0\u0100\u2028\u2029\ufdec\ufeff\U0001D11E')
 
         got = escaping.escape_html(test_input)
         self.assertEquals(
@@ -64,6 +62,10 @@ class HtmlTest(unittest.TestCase):
             want, got, 'reversible:\n\t%r\n!=\n\t%r' % (want, got))
 
     def test_strip_tags(self):
+        """
+        Test the tag stripper that is used to embed known safe HTML content
+        in attribute values after removing tags.
+        """
         tests = (
             ("", ""),
             ("Hello, World!", "Hello, World!"),
@@ -79,7 +81,7 @@ class HtmlTest(unittest.TestCase):
             ('Foo<div title="1>2">Bar', "FooBar"),
             ('I <3 Ponies!', 'I &lt;3 Ponies!'),
             ('<script>foo()</script>', 'foo()'),  # Or ''
-        )
+            )
 
         for test_input, want in tests:
             got = escaping.escape_html_attribute(content.SafeHTML(test_input))
