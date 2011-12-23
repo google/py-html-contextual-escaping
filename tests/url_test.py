@@ -10,6 +10,7 @@ class ContentTest(unittest.TestCase):
     """Testcases for module content"""
 
     def test_normalization(self):
+        """Test URL normalization functions"""
         tests = (
             ("", ""),
             (
