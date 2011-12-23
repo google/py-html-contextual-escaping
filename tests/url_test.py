@@ -3,6 +3,7 @@
 """Testcases for module content"""
 
 import escaping
+import test_common
 import unittest
 
 class ContentTest(unittest.TestCase):
@@ -15,30 +16,31 @@ class ContentTest(unittest.TestCase):
                 "http://example.com:80/foo/bar?q=foo%20&bar=x+y#frag",
                 "http://example.com:80/foo/bar?q=foo%20&bar=x+y#frag",
                 ),
+            (
+                "http://example.com:80/foo/bar?q=foo &bar=x+y#frag",
+                "http://example.com:80/foo/bar?q=foo%20&bar=x+y#frag",
+                ),
             (" ", "%20"),
             ("%7c", "%7c"),
             ("%7C", "%7C"),
+            # invalid escape sequences should be normalized.
             ("%2", "%252"),
             ("%", "%25"),
             ("%z", "%25z"),
             (u"/foo|bar/%5c\u1234", "/foo%7cbar/%5c%e1%88%b4"),
+            ("<script>alert(1337)</script>",
+             "%3cscript%3ealert%281337%29%3c/script%3e"),
             )
         for test_input, want in tests:
             got = escaping.normalize_url(test_input)
             self.assertEquals(want, got, test_input)
             self.assertEquals(want, escaping.normalize_url(want),
                               'idempotent %r' % want)
+
     def test_url_sanitizers(self):
-        test_input = (
-            u"\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f"
-            u"\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f"
-            u" !\"#$%&'()*+,-./"
-            u"0123456789:;<=>?"
-            u"@ABCDEFGHIJKLMNO"
-            u"PQRSTUVWXYZ[\\]^_"
-            u"`abcdefghijklmno"
-            u"pqrstuvwxyz{|}~\x7f"
-            u"\u00A0\u0100\u2028\u2029\ufeff\U0001D11E")
+        """Test escapers on selected codepoints"""
+
+        test_input = test_common.ASCII_AND_SELECTED_CODEPOINTS
 
         tests = (
             (
@@ -51,7 +53,8 @@ class ContentTest(unittest.TestCase):
                  "PQRSTUVWXYZ%5b%5c%5d%5e_"
                  "%60abcdefghijklmno"
                  "pqrstuvwxyz%7b%7c%7d~%7f"
-                 "%c2%a0%c4%80%e2%80%a8%e2%80%a9%ef%bb%bf%f0%9d%84%9e"),
+                 "%c2%a0%c4%80%e2%80%a8%e2%80%a9%ef%b7%ac%ef%bb%bf%f0%9d%84%9e"
+                 ),
                 ),
             (
                 escaping.normalize_url,
@@ -63,8 +66,9 @@ class ContentTest(unittest.TestCase):
                  "PQRSTUVWXYZ[%5c]%5e_"
                  "%60abcdefghijklmno"
                  "pqrstuvwxyz%7b%7c%7d~%7f"
-                 "%c2%a0%c4%80%e2%80%a8%e2%80%a9%ef%bb%bf%f0%9d%84%9e"),
-                  ),
+                 "%c2%a0%c4%80%e2%80%a8%e2%80%a9%ef%b7%ac%ef%bb%bf%f0%9d%84%9e"
+                 ),
+                ),
             )
 
         for sanitizer, want in tests:
