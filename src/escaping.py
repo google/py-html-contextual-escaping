@@ -369,14 +369,16 @@ def escape_js_value(value):
     Returns a JavaScript code representation of the input.
     """
 
-    if (isinstance(value, content.TypedContent)
-        and value.kind == content.CONTENT_KIND_JS):
-        value = value.content
-        # We can't allow a value that contains the substring '</script'.
-        # We could try to fixup, but that is problematic.
-        if re.search(r'(?i)</script', value):
-            value = None
-        return value
+    if (isinstance(value, content.TypedContent)):
+        if value.kind == content.CONTENT_KIND_JS:
+            value = value.content
+            # We can't allow a value that contains the substring '</script'.
+            # We could try to fixup, but that is problematic.
+            if re.search(r'(?i)</script', value):
+                value = None
+            return value
+        elif value.kind == content.CONTENT_KIND_JS_STR_CHARS:
+            return '"%s"' % escape_js_string(value)
 
     escaped = json.dumps(
         value,
