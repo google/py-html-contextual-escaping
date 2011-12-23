@@ -88,5 +88,65 @@ class HtmlTest(unittest.TestCase):
             self.assertEquals(
                 want, got, '%s:\n\t%r\n!=\n\t%r' % (test_input, want, got))
 
+    def test_filter_html_attr(self):
+        """Tests normalization of HTML attr values"""
+        tests = (
+            (
+                content.SafeHTMLAttr(' dir=ltr'),
+                ' dir="ltr"',
+                ),
+            (
+                content.SafeHTMLAttr('dir="ltr"'),
+                ' dir="ltr"',
+                ),
+            (
+                content.SafeHTMLAttr("dir='ltr'"),
+                ' dir="ltr"',
+                ),
+            (
+                content.SafeHTMLAttr("title=foo \"bar &amp; <baz>'"),
+                ' title="foo &#34;bar &amp; &lt;baz&gt;"',
+                ),
+            (
+                content.SafeHTMLAttr(">"),
+                '',
+                ),
+            (
+                # The value should be trusted.
+                content.SafeHTMLAttr("href = javascript:alert(1337) "),
+                ' href="javascript:alert(1337)"',
+                ),
+            (
+                # A generic attr name can be emitted.
+                'title',
+                'title',
+                ),
+            (
+                # but privileged ones cannot.
+                'style',
+                'zSafehtmlz',
+                ),
+            (
+                'Style',
+                'zSafehtmlz',
+                ),
+            (
+                'href',
+                'zSafehtmlz',
+                ),
+            (
+                ' HREF ',
+                'zSafehtmlz',
+                ),
+            (
+                'crossorigin',
+                'zSafehtmlz',
+                ),
+            )
+        for test_input, want in tests:
+            got = escaping.filter_html_attribute(test_input)
+            self.assertEquals(want, got)
+        
+
 if __name__ == '__main__':
     unittest.main()

@@ -275,6 +275,12 @@ def escape_html_attribute(value):
     return _escape_html_helper(value)
 
 
+# Optional space, an attr name in group 1,
+# optionally (=, open quote, value in group 2, close quote),
+# optional space.
+_ATTR_NAME_VALUE_PAIR = re.compile(
+    r'(?s)\A(?:\s*)([0-9A-Za-z\-:]+)(?:\s*=\s*[\"\']?(.*?)[\"\']?)?\s*\Z')
+
 def filter_html_attribute(value):
     """
     Filters out strings that cannot be a substring of a valid HTML attribute.
@@ -288,8 +294,12 @@ def filter_html_attribute(value):
 
     if (isinstance(value, content.TypedContent)
         and value.kind == content.CONTENT_KIND_HTML_ATTR):
-        # TODO: Normalize quotes and surrounding space.
-        return value.content
+        # Normalize quotes and surrounding space.
+        match = _ATTR_NAME_VALUE_PAIR.search(value.content)
+        if not match:
+            return ''
+        return ' %s="%s"' % (match.group(1),
+                             _normalize_html_helper(match.group(2)))
     if type(value) not in (str, unicode):
         value = str(value)
     value = _filter_html_attribute_helper(value)
