@@ -69,7 +69,7 @@ def next_js_ctx(js_tokens, ctx):
         is_regex = True
     else:
         # Look for one of the keywords above.
-        word = re.search(r'[\w$]+$', js_tokens)
+        word = re.search(r'[\w$]+\Z', js_tokens)
         is_regex = (word and word.group(0)) in _REGEX_PRECEDER_KEYWORDS
     ctx = ctx & ~context.JS_CTX_ALL
     if is_regex:

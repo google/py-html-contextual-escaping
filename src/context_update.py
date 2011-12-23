@@ -360,7 +360,7 @@ class _TransitionToSelf(_Transition):
 
 
 # Consumes the entire content without change if nothing else matched.
-_TRANSITION_TO_SELF = _TransitionToSelf(r'$')
+_TRANSITION_TO_SELF = _TransitionToSelf(r'\Z')
 # Matching at the end is lowest possible precedence.
 
 
@@ -388,9 +388,9 @@ class _URLPartTransition(_Transition):
         return (prior & ~URL_PART_ALL) | url_part
 
 
-_URL_PART_TRANSITION = _URLPartTransition(r'([?#])|$')
+_URL_PART_TRANSITION = _URLPartTransition(r'([?#])|\Z')
 _CSSURL_PART_TRANSITION = _URLPartTransition(
-    r'([?#]|\\(?:23|3[fF]|[?#]))|$')
+    r'([?#]|\\(?:23|3[fF]|[?#]))|\Z')
 
 
 class _EndTagTransition(_Transition):
@@ -482,15 +482,15 @@ class _DivPreceder(_Transition):
 # matches earliest in the text wins.
 _TRANSITIONS = [None for _ in xrange(0, COUNT_OF_STATES)]
 _TRANSITIONS[STATE_TEXT] = (
-    _TransitionToSelf(r'^[^<]+'),
+    _TransitionToSelf(r'\A[^<]+'),
     # Normalizing the '<!--' to '' elides comments from HTML text.
     _NormalizeTransition(_ToTransition(r'<!--', STATE_HTMLCMT), ""),
-    _ToTagTransition(r'(?i)<script(?=[\s>\/]|$)', ELEMENT_SCRIPT),
-    _ToTagTransition(r'(?i)<style(?=[\s>\/]|$)', ELEMENT_STYLE),
-    _ToTagTransition(r'(?i)<textarea(?=[\s>\/]|$)', ELEMENT_TEXTAREA),
-    _ToTagTransition(r'(?i)<title(?=[\s>\/]|$)', ELEMENT_TITLE),
-    _ToTagTransition(r'(?i)<xmp(?=[\s>\/]|$)', ELEMENT_XMP),
-    _NormalizeTransition(_TransitionToSelf(r'(?i)<(?!/?[A-Z]|!DOCTYPE)'),
+    _ToTagTransition(r'(?i)<script(?![a-z\-])', ELEMENT_SCRIPT),
+    _ToTagTransition(r'(?i)<style(?![a-z\-])', ELEMENT_STYLE),
+    _ToTagTransition(r'(?i)<textarea(?![a-z\-])', ELEMENT_TEXTAREA),
+    _ToTagTransition(r'(?i)<title(?![a-z\-])', ELEMENT_TITLE),
+    _ToTagTransition(r'(?i)<xmp(?![a-z\-])', ELEMENT_XMP),
+    _NormalizeTransition(_TransitionToSelf(r'(?i)<(?!/?[a-z]|!doctype)'),
                          "&lt;"),
     _ToTransition(r'<', STATE_HTML_BEFORE_TAG_NAME),
     )
@@ -500,42 +500,42 @@ _TRANSITIONS[STATE_RCDATA] = (
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[STATE_HTML_BEFORE_TAG_NAME] = (
-    _ToTransition(r'^[A-Za-z]+', STATE_TAG_NAME),
-    _ToTransition(r'^(?=[^A-Za-z])', STATE_TEXT),
+    _ToTransition(r'\A[A-Za-z]+', STATE_TAG_NAME),
+    _ToTransition(r'\A(?=[^A-Za-z])', STATE_TEXT),
     )
 _TRANSITIONS[STATE_TAG_NAME] = (
-    _TransitionToSelf(r'^[A-Za-z0-9:-]*(?:[A-Za-z0-9]|$)'),
-    _ToTagTransition(r'^(?=[\/\s>])', ELEMENT_NONE),
+    _TransitionToSelf(r'\A[A-Za-z0-9:-]*(?:[A-Za-z0-9]|\Z)'),
+    _ToTagTransition(r'\A(?=[\/\s>])', ELEMENT_NONE),
     )
 _TRANSITIONS[STATE_TAG] = (
     # Allows "data-foo" and other dashed attribute names, but
     # intentionally disallows "--" as an attribute name so that a tag ending
     # after a value-less attribute named "--" cannot be confused with a HTML
     # comment end ("-->").
-    _TransitionToAttrName(r'^\s*([A-Za-z][\w:-]*)'),
-    _TagDoneTransition(r'^\s*\/?>'),
-    _TransitionToSelf(r'^\s+$'),
+    _TransitionToAttrName(r'\A\s*([A-Za-z][\w:-]*)'),
+    _TagDoneTransition(r'\A\s*\/?>'),
+    _TransitionToSelf(r'\A\s+\Z'),
     )
 _TRANSITIONS[STATE_ATTR_NAME] = (
     _TransitionToSelf(r'[A-Za-z0-9-]+'),
     # For a value-less attribute, make an epsilon transition back to the tag
     # body context to look for a tag end or another attribute name.
-    _TransitionToState(r'^', STATE_AFTER_NAME),
+    _TransitionToState(r'\A', STATE_AFTER_NAME),
     )
 _TRANSITIONS[STATE_AFTER_NAME] = (
-    _TransitionToState(r'^\s*=', STATE_BEFORE_VALUE),
-    _TransitionToSelf(r'^\s+'),
-    _TransitionBackToTag(r'^'),
+    _TransitionToState(r'\A\s*=', STATE_BEFORE_VALUE),
+    _TransitionToSelf(r'\A\s+'),
+    _TransitionBackToTag(r'\A'),
     )
 _TRANSITIONS[STATE_BEFORE_VALUE] = (
-    _TransitionToAttrValue(r'^\s*["]', DELIM_DOUBLE_QUOTE),
-    _TransitionToAttrValue(r'^\s*[\']', DELIM_SINGLE_QUOTE),
-    _TransitionToAttrValue(r'^(?=[^=\"\'\`\s>])',  # Unquoted value start.
+    _TransitionToAttrValue(r'\A\s*["]', DELIM_DOUBLE_QUOTE),
+    _TransitionToAttrValue(r'\A\s*[\']', DELIM_SINGLE_QUOTE),
+    _TransitionToAttrValue(r'\A(?=[^=\"\'\`\s>])',  # Unquoted value start.
                            DELIM_SPACE_OR_TAG_END),
     # Epsilon transition back if there is an empty value followed by a tag end:
     #    <input value=>
-    _NormalizeTransition(_TransitionBackToTag(r'^(?=/?>)'), '""'),
-    _TransitionToSelf(r'^\s+'),
+    _NormalizeTransition(_TransitionBackToTag(r'\A(?=/?>)'), '""'),
+    _TransitionToSelf(r'\A\s+'),
     )
 _TRANSITIONS[STATE_HTMLCMT] = (
     _NormalizeTransition(_ToTransition(r'-->', STATE_TEXT), "", True),
@@ -658,47 +658,48 @@ _TRANSITIONS[STATE_JSDQ_STR] = (
     _DivPreceder(r'["]'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
-        "(?i)" +                      # Case-insensitively
-        "^(?:" +                      # from the start
-            "[^\"\\\\" + NLS + "<]" + # match all but nls, quotes, \s, <;
-            "|\\\\(?:" +              # or backslash followed by a
-                "\\r\\n?" +           # line continuation
-                "|[^\\r<]" +          # or an escape
-                "|<(?!/script)" +     # or non-closing less-than.
-            ")" +
-            "|<(?!/script)" +
-        ")+"),
+        r"(?i)" +                      # Case-insensitively
+        r"\A(?:" +                     # from the start
+            r"[^\"\\" + NLS + r"<]" +  # match all but nls, quotes, \s, <;
+            r"|\\(?:" +                # or backslash followed by a
+                r"\r\n?" +             # line continuation
+                r"|[^\r<]" +           # or an escape
+                r"|<(?!/script)" +     # or non-closing less-than.
+            r")" +
+            r"|<(?!/script)" +
+        r")+"),
     )
 _TRANSITIONS[STATE_JSSQ_STR] = (
     _DivPreceder(r'[\']'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
-        "(?i)^(?:" +                   # Case-insensitively, from start
-            "[^\'\\\\" + NLS + "<]" +  # match all but nls, quotes, \s, <;
-            "|\\\\(?:" +               # or a backslash followed by a
-                "\\r\\n?" +            # line continuation
-                "|[^\\r<]" +           # or an escape;
-                "|<(?!/script)" +      # or non-closing less-than.
-            ")" +
-            "|<(?!/script)" +
-        ")+"),
+        r"(?i)" +
+        r"\A(?:" +                     # Case-insensitively, from start
+            r"[^\'\\" + NLS + "<]" +   # match all but nls, quotes, \s, <;
+            r"|\\(?:" +                # or a backslash followed by a
+                r"\r\n?" +             # line continuation
+                r"|[^\r<]" +           # or an escape;
+                r"|<(?!/script)" +     # or non-closing less-than.
+            r")" +
+            r"|<(?!/script)" +
+        r")+"),
     )
 _TRANSITIONS[STATE_JSREGEXP] = (
     _DivPreceder(r'/'),
     _SCRIPT_TAG_END,
     _TransitionToSelf(
-        "^(?:" +
+        r"\A(?:" +
             # We have to handle [...] style character sets specially since
             # in /[/]/, the second solidus doesn't end the RegExp.
-            "[^\\[\\\\/<" + NLS + "]" + # A non-charset, non-escape token;
-            "|\\\\[^" + NLS + "]" +     # an escape;
-            "|\\\\?<(?!/script)" +
-            "|\\[" +                    # or a character set containing
-                "(?:[^\\]\\\\<" + NLS + "]" +  # normal characters,
-                "|\\\\(?:[^" + NLS + "]))*" +  # and escapes;
-                "|\\\\?<(?!/script)" +  # or non-closing angle less-than.
-            "\\]" +
-        ")+"),
+            r"[^\[\\/<" + NLS + "]" +        # A non-charset, non-escape token;
+            r"|\\[^" + NLS + "]" +           # an escape;
+            r"|\\?<(?!/script)" +
+            r"|\[" +                         # or a character set containing
+                r"(?:[^\]\\<" + NLS + "]" +  # normal characters,
+                r"|\\(?:[^" + NLS + "]))*" + # and escapes;
+                r"|\\?<(?!/script)" +        # or non-closing angle less-than.
+            r"\]" +
+        r")+"),
     )
     # TODO: Do we need to recognize URL attributes that start with
     # javascript:, data:text/html, etc. and transition to JS instead

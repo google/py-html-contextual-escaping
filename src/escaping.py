@@ -718,27 +718,27 @@ _MATCHER_FOR_ESCAPE_JS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&\x27+/<=>\\`\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_STRING = re.compile(
-    ur'(?s)(?:\\(.|$)|[\n\r\"\'+<=>&\u2028\u2029])')
+    ur'(?s)(?:\\(.|\Z)|[\n\r\"\'+<=>&\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_JS_REGEX = re.compile(
     ur'[\x00\x08-\x0d"$&-+\--/:<-?\[-^`\x7b-\x7d\x7f\x85\u2028\u2029]')
 
 _MATCHER_FOR_NORMALIZE_JS_REGEX = re.compile(
     # A '*' or '/' at the beginning could turn a /{{.}}/ into a comment.
-    ur'(?s)(?:^[*]|\\(.|$)|[\n\r+\"\'/<=>&\u2028\u2029])')
+    ur'(?s)(?:\A[*]|\\(.|\Z)|[\n\r+\"\'/<=>&\u2028\u2029])')
 
 _MATCHER_FOR_ESCAPE_CSS_STRING = re.compile(
     ur'[\x00\x08-\x0d"&-*/:->+@\\`\x7b\x7d\x85\xa0\u2028\u2029]')
 
 _FILTER_FOR_FILTER_URL = re.compile(
-    r'(?i)^(?:(?:https?|mailto):|[^&:/?#]*(?:[/?#]|$))')
+    r'(?i)\A(?:(?:https?|mailto):|[^&:/?#]*(?:[/?#]|\Z))')
 
 _FILTER_FOR_FILTER_HTML_ATTRIBUTE = re.compile(
-    r'(?i)^(?!style|on|action|archive|background|cite|classid|codebase|data'
-    r'|dsync|href|longdesc|src|usemap)(?:[a-z0-9_$:-]+|dir=(?:ltr|rtl))$')
+    r'(?i)\A(?!style|on|action|archive|background|cite|classid|codebase|data'
+    r'|dsync|href|longdesc|src|usemap)(?:[a-z0-9_$:-]+|dir=(?:ltr|rtl))\Z')
 
 _FILTER_FOR_FILTER_HTML_ELEMENT_NAME = re.compile(
-    r'(?i)^(?!script|style|title|textarea|xmp|no)[a-z0-9_$:-]*$')
+    r'(?i)\A(?!script|style|title|textarea|xmp|no)[a-z0-9_$:-]*\Z')
 
 def _escape_html_helper(value):
     """ '<a&gt;' -> '&lt;a&amp;gt;' """
