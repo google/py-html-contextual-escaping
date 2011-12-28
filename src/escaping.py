@@ -12,6 +12,7 @@ defined in the context module.
 
 import content
 import context
+import html
 import json
 import re
 
@@ -24,46 +25,46 @@ ESC_MODE_ESCAPE_HTML_RCDATA = 1
 
 # Encodes HTML special characters, including quotes, so that the
 # value can appear as part of a quoted attribute value.  This differs
-# from ESCAPE_MODE_ESCAPE_HTML in that it strips tags from known safe
-# HTML.
+# from ESCAPE_MODE_ESCAPE_HTML in that it strips tags from known safe HTML.
 ESC_MODE_ESCAPE_HTML_ATTRIBUTE = 2
 
 # Only allow a valid identifier - letters, numbers, dashes, and underscores.
-# Throws an exception otherwise.
 ESC_MODE_FILTER_HTML_ELEMENT_NAME = 3
 
-# Only allow a valid identifier - letters, numbers, dashes, and underscores.
-# Throws an exception otherwise.
+# Only allow a valid identifier - letters, numbers, dashes, and underscores
+# that is the name of an innocuous attr name.
 ESC_MODE_FILTER_HTML_ATTRIBUTE = 4
+
+# Only allow a valid identifier - letters, numbers, dashes, and underscores.
+ESC_MODE_FILTER_HTML_ATTR_SUFFIX = 5
 
 # Encode all HTML special characters and quotes, and JS newlines as
 # if to allow them to appear literally in a JS string.
-ESC_MODE_ESCAPE_JS_STRING = 5
+ESC_MODE_ESCAPE_JS_STRING = 6
 
 # If a number or boolean, output as a JS literal.  Otherwise surround
-# in quotes and escape.  Make sure all HTML and space characters are
-# quoted.
-ESC_MODE_ESCAPE_JS_VALUE = 6
+# in quotes and escape.  Make sure all HTML and space characters are quoted.
+ESC_MODE_ESCAPE_JS_VALUE = 7
 
 # Like ESC_MODE_ESCAPE_JS_STRING but additionally escapes RegExp specials like
 # ".+*?$^[](){}".
-ESC_MODE_ESCAPE_JS_REGEX = 7
+ESC_MODE_ESCAPE_JS_REGEX = 8
 
 # Must escape all quotes, newlines, and the close parenthesis using
 # '\\' followed by hex followed by a space.
-ESC_MODE_ESCAPE_CSS_STRING = 8
+ESC_MODE_ESCAPE_CSS_STRING = 9
 
 # If the value is numeric, renders it as a numeric value so that
 # "{$n}px" works as expected, otherwise if it is a valid
 # CSS identifier, outputs it without escaping, otherwise surrounds in
 # quotes and escapes like ESC_MODE_ESCAPE_CSS_STRING.
-ESC_MODE_FILTER_CSS_VALUE = 9
+ESC_MODE_FILTER_CSS_VALUE = 10
 
 # Percent encode all URL special characters and characters that
 # cannot appear unescaped in a URL such as spaces.  Make sure to
 # encode pluses and parentheses.
 # This corresponds to the JavaScript function encodeURIComponent.
-ESC_MODE_ESCAPE_URL = 10
+ESC_MODE_ESCAPE_URL = 11
 
 # Percent encode non-URL characters that cannot appear unescaped in a
 # URL such as spaces, and encode characters that are not special in
@@ -72,23 +73,23 @@ ESC_MODE_ESCAPE_URL = 10
 # function encodeURI but additionally encodes quotes
 # parentheses, and percent signs that are not followed by two hex
 # digits.
-ESC_MODE_NORMALIZE_URL = 11
+ESC_MODE_NORMALIZE_URL = 12
 
 # Filters out URL schemes like "javascript:" that load code.
-ESC_MODE_FILTER_URL = 12
+ESC_MODE_FILTER_URL = 13
 
 # The explicit rejection of escaping.
-ESC_MODE_NO_AUTOESCAPE = 13
+ESC_MODE_NO_AUTOESCAPE = 14
 
 # A mapping from all inputs to a single space.
-ESC_MODE_ELIDE = 14
+ESC_MODE_ELIDE = 15
 
 # Introduces a double quote at the beginning for interpolation values
 # that start an open quoted HTML_ATTRIBUTE
-ESC_MODE_OPEN_QUOTE = 15
+ESC_MODE_OPEN_QUOTE = 16
 
 # One greater than the max of ESC_MODE_*.
-_COUNT_OF_ESC_MODES = 16
+_COUNT_OF_ESC_MODES = 17
 
 # Contains pairs such that (f, g) is in this set only (but not necessarily)
 # if g(f(x)) == f(x) for all x.
@@ -107,8 +108,7 @@ ESC_MODE_FOR_STATE[context.STATE_TEXT] = ESC_MODE_ESCAPE_HTML
 ESC_MODE_FOR_STATE[context.STATE_RCDATA] = ESC_MODE_ESCAPE_HTML_RCDATA
 ESC_MODE_FOR_STATE[context.STATE_HTML_BEFORE_TAG_NAME] = (
     ESC_MODE_FILTER_HTML_ELEMENT_NAME)
-ESC_MODE_FOR_STATE[context.STATE_TAG_NAME] = ESC_MODE_FILTER_HTML_ELEMENT_NAME
-ESC_MODE_FOR_STATE[context.STATE_TAG] = ESC_MODE_FILTER_HTML_ATTRIBUTE
+#ESC_MODE_FOR_STATE[context.STATE_TAG_NAME] = ESC_MODE_FILTER_HTML_ELEMENT_NAME
 ESC_MODE_FOR_STATE[context.STATE_ATTR_NAME] = ESC_MODE_FILTER_HTML_ATTRIBUTE
 ESC_MODE_FOR_STATE[context.STATE_HTMLCMT] = ESC_MODE_ELIDE
 ESC_MODE_FOR_STATE[context.STATE_ATTR] = ESC_MODE_ESCAPE_HTML_ATTRIBUTE
@@ -166,6 +166,12 @@ def esc_mode_for_hole(context_before):
 
     if state == context.STATE_JS:
         ctx = (ctx & ~context.JS_CTX_ALL) | context.JS_CTX_DIV_OP
+    elif (state == context.STATE_ATTR_NAME
+          and context.attr_type_of(ctx) != context.ATTR_NONE):
+        esc_modes[0] = ESC_MODE_FILTER_HTML_ATTR_SUFFIX
+
+    if esc_modes[0] is None:
+        ctx = context.STATE_ERROR
 
     esc_mode = esc_modes[-1]
     delim_type = context.delim_type_of(ctx)
@@ -294,29 +300,49 @@ def filter_html_attribute(value):
 
     if (isinstance(value, content.TypedContent)
         and value.kind == content.CONTENT_KIND_HTML_ATTR):
-        # Normalize quotes and surrounding space.
-        match = _ATTR_NAME_VALUE_PAIR.search(value.content)
-        if not match:
-            return ''
-        return ' %s="%s"' % (match.group(1),
-                             _normalize_html_helper(match.group(2)))
-    if type(value) not in (str, unicode):
+        value = value.content
+    elif value is None:
+        return ''
+    else:
+        if type(value) not in (str, unicode):
+            value = str(value)
+        value = _filter_html_attribute_helper(value)
+        if content.CONTENT_KIND_PLAIN != html.attr_type(value):
+            return 'zSafehtmlz'
+    if value.find('=') < 0:
+        return value
+    # Quote any attribute values so that a contextually autoescaped
+    # whole attribute does not end up having a following value
+    # associated with it.
+    # The contextual autoescaper, since it propagates context left to
+    # right, is unable to distinguish
+    #     <div {$x}>
+    # from
+    #     <div {$x}={$y}>.
+    # If {$x} is "dir=ltr", and y is "foo" make sure the parser does not
+    # see the attribute "dir=ltr=foo".
+    match = _ATTR_NAME_VALUE_PAIR.search(value)
+    if not match:
+        return 'zSafehtmlz'
+    return ' %s="%s"' % (match.group(1), _normalize_html_helper(match.group(2)))
+
+
+def filter_html_attr_suffix(value):
+    """
+    Filters out strings not composed of valid HTML attribute suffix characters.
+
+    value - The value to escape.  May not be a string, but the value
+        will be coerced to a string.
+
+    Returns a valid HTML attribute name part or name/value pair.
+    \"zSafehtmlz\" if the input is invalid.
+    """
+
+    if value is None:
+        return ''
+    elif type(value) not in (str, unicode):
         value = str(value)
-    value = _filter_html_attribute_helper(value)
-    equals_index = value.find('=')
-    if equals_index >= 0 and value[-1] not in ('"', "'"):
-        # Quote any attribute values so that a contextually autoescaped
-        # whole attribute does not end up having a following value
-        # associated with it.
-        # The contextual autoescaper, since it propagates context left to
-        # right, is unable to distinguish
-        #     <div {$x}>
-        # from
-        #     <div {$x}={$y}>.
-        # If {$x} is "dir=ltr", and y is "foo" make sure the parser does not
-        # see the attribute "dir=ltr=foo".
-        return '%s"%s"' % (value[:equals_index+1], value[equals_index+1:])
-    return value
+    return _filter_html_attribute_helper(value)
 
 
 def filter_html_element_name(value):
@@ -744,11 +770,10 @@ _FILTER_FOR_FILTER_URL = re.compile(
     r'(?i)\A(?:(?:https?|mailto):|[^&:/?#]*(?:[/?#]|\Z))')
 
 _FILTER_FOR_FILTER_HTML_ATTRIBUTE = re.compile(
-    r'(?i)\A(?!style|on|action|archive|background|cite|classid|codebase|data'
-    r'|dsync|href|longdesc|src|usemap)(?:[a-z0-9_$:-]+|dir=(?:ltr|rtl))\Z')
+    r'(?i)\A(?:[a-z0-9_$:\-]+|dir=(?:ltr|rtl))\Z')
 
 _FILTER_FOR_FILTER_HTML_ELEMENT_NAME = re.compile(
-    r'(?i)\A(?!script|style|title|textarea|xmp|no)[a-z0-9_$:-]*\Z')
+    r'(?i)\A(?!script|style|title|textarea|xmp|no)[a-z0-9_$:\-]*\Z')
 
 def _escape_html_helper(value):
     """ '<a&gt;' -> '&lt;a&amp;gt;' """
@@ -811,6 +836,8 @@ SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_HTML_ATTRIBUTE] = escape_html_attribute
 SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_HTML_ELEMENT_NAME] = (
     filter_html_element_name)
 SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_HTML_ATTRIBUTE] = filter_html_attribute
+SANITIZER_FOR_ESC_MODE[ESC_MODE_FILTER_HTML_ATTR_SUFFIX] = (
+    filter_html_attr_suffix)
 SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_STRING] = escape_js_string
 SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_VALUE] = escape_js_value
 SANITIZER_FOR_ESC_MODE[ESC_MODE_ESCAPE_JS_REGEX] = escape_js_regex

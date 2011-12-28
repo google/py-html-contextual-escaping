@@ -108,10 +108,6 @@ class HtmlTest(unittest.TestCase):
                 ' title="foo &#34;bar &amp; &lt;baz&gt;"',
                 ),
             (
-                content.SafeHTMLAttr(">"),
-                '',
-                ),
-            (
                 # The value should be trusted.
                 content.SafeHTMLAttr("href = javascript:alert(1337) "),
                 ' href="javascript:alert(1337)"',
@@ -124,6 +120,23 @@ class HtmlTest(unittest.TestCase):
             (
                 # but privileged ones cannot.
                 'style',
+                'zSafehtmlz',
+                ),
+            (
+                # Attr names are case-insensitive.
+                'TITLE',
+                'TITLE',
+                ),
+            (
+                'data-foo',
+                'data-foo',
+                ),
+            (
+                'ONMOUSEOVER',
+                'zSafehtmlz',
+                ),
+            (
+                'onobscureeventtype',
                 'zSafehtmlz',
                 ),
             (

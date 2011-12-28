@@ -6,6 +6,7 @@ content.
 """
 
 from context import *
+import content
 import debug
 import escaping
 import html
@@ -134,12 +135,12 @@ class _ToTagTransition(_Transition):
     element.
     """
 
-    def __init__(self, regex, el_type):
+    def __init__(self, regex, context):
         _Transition.__init__(self, regex)
-        self.el_type = el_type
+        self.context = context
 
     def compute_next_context(self, prior, match):
-        return STATE_TAG | self.el_type
+        return self.context
 
 
 class _NormalizeTransition(_Transition):
@@ -247,27 +248,13 @@ class _TransitionToAttrName(_Transition):
         _Transition.__init__(self, regex)
 
     def compute_next_context(self, prior, match):
-        attr_name = match.group(1).lower()
-        colon = attr_name.find(':')
+        content_kind = html.attr_type(match.group(1))
         attr = attr_type_of(prior)
-        if colon >= 0:
-            if attr_name[:colon] == 'xmlns':
-                attr = ATTR_URL
-            # Treat html:href, xlink:href, svg:style, svg:onclick, etc. the
-            # same regardless of prefix.
-            # It is possible, but unlikely, that a non-malicious template
-            # author would use a namespace that includes an XML variant where
-            # foo:href is script, but barring that, this is a conservative
-            # assumption.
-            attr_name = attr_name[colon+1:]
-        if attr_name.startswith("on"):
+        if content_kind == content.CONTENT_KIND_JS:
             attr = ATTR_SCRIPT
-        elif "style" == attr_name:
+        elif content_kind == content.CONTENT_KIND_CSS:
             attr = ATTR_STYLE
-        elif attr_name in html.URL_ATTR_NAMES:
-            attr = ATTR_URL
-        # Heuristic for custom HTML attributes and HTML5 data-* attributes.
-        elif (attr_name.find('url') & attr_name.find('uri')) >= 0:
+        elif content_kind == content.CONTENT_KIND_URL:
             attr = ATTR_URL
         return STATE_ATTR_NAME | element_type_of(prior) | attr
 
@@ -485,27 +472,28 @@ _TRANSITIONS[STATE_TEXT] = (
     _TransitionToSelf(r'\A[^<]+'),
     # Normalizing the '<!--' to '' elides comments from HTML text.
     _NormalizeTransition(_ToTransition(r'<!--', STATE_HTMLCMT), ""),
-    _ToTagTransition(r'(?i)<script(?![a-z\-])', ELEMENT_SCRIPT),
-    _ToTagTransition(r'(?i)<style(?![a-z\-])', ELEMENT_STYLE),
-    _ToTagTransition(r'(?i)<textarea(?![a-z\-])', ELEMENT_TEXTAREA),
-    _ToTagTransition(r'(?i)<title(?![a-z\-])', ELEMENT_TITLE),
-    _ToTagTransition(r'(?i)<xmp(?![a-z\-])', ELEMENT_XMP),
-    _NormalizeTransition(_TransitionToSelf(r'(?i)<(?!/?[a-z]|!doctype)'),
-                         "&lt;"),
+    _ToTagTransition(r'(?i)<script(?![a-z\-])', STATE_TAG | ELEMENT_SCRIPT),
+    _ToTagTransition(r'(?i)<style(?![a-z\-])', STATE_TAG | ELEMENT_STYLE),
+    _ToTagTransition(r'(?i)<textarea(?![a-z\-])', STATE_TAG | ELEMENT_TEXTAREA),
+    _ToTagTransition(r'(?i)<title(?![a-z\-])', STATE_TAG | ELEMENT_TITLE),
+    _ToTagTransition(r'(?i)<xmp(?![a-z\-])', STATE_TAG | ELEMENT_XMP),
+    _NormalizeTransition(
+        _TransitionToSelf(r'(?i)<(?!/?(?:[a-z]|\Z)|!doctype)'), "&lt;"),
+    _ToTagTransition(r'</', STATE_HTML_BEFORE_TAG_NAME | ELEMENT_CLOSE),
     _ToTransition(r'<', STATE_HTML_BEFORE_TAG_NAME),
     )
 _TRANSITIONS[STATE_RCDATA] = (
-    _RcdataEndTagTransition(r'</(\w+)\b'),
+    _RcdataEndTagTransition(r'(?i)</([a-z\-]+)(?![a-z\-])'),
     _NormalizeTransition(_TransitionToSelf(r'<'), "&lt;"),
     _TRANSITION_TO_SELF,
     )
 _TRANSITIONS[STATE_HTML_BEFORE_TAG_NAME] = (
-    _ToTransition(r'\A[A-Za-z]+', STATE_TAG_NAME),
+    _ToTagTransition(r'\A[A-Za-z]+', STATE_TAG_NAME),
     _ToTransition(r'\A(?=[^A-Za-z])', STATE_TEXT),
     )
 _TRANSITIONS[STATE_TAG_NAME] = (
     _TransitionToSelf(r'\A[A-Za-z0-9:-]*(?:[A-Za-z0-9]|\Z)'),
-    _ToTagTransition(r'\A(?=[\/\s>])', ELEMENT_NONE),
+    _ToTagTransition(r'\A(?=[\/\s>])', STATE_TAG | ELEMENT_NONE),
     )
 _TRANSITIONS[STATE_TAG] = (
     # Allows "data-foo" and other dashed attribute names, but
@@ -517,7 +505,7 @@ _TRANSITIONS[STATE_TAG] = (
     _TransitionToSelf(r'\A\s+\Z'),
     )
 _TRANSITIONS[STATE_ATTR_NAME] = (
-    _TransitionToSelf(r'[A-Za-z0-9-]+'),
+    _TransitionToSelf(r'[A-Za-z0-9\-]+'),
     # For a value-less attribute, make an epsilon transition back to the tag
     # body context to look for a tag end or another attribute name.
     _TransitionToState(r'\A', STATE_AFTER_NAME),

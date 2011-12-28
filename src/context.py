@@ -133,6 +133,9 @@ ELEMENT_LISTING = 5 << 5
 # An XMP element whose content is raw CDATA.
 ELEMENT_XMP = 6 << 5
 
+# A close tag ("</foo>") which does not start an element.
+ELEMENT_CLOSE = 7 << 5
+
 # All of the element bits set.
 ELEMENT_ALL = 7 << 5
 
