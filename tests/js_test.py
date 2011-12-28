@@ -325,6 +325,10 @@ class OrderedDict(dict):
     def iterkeys(self):
         return [a for a, _ in self.pairs]
 
+    def __iter__(self):
+        for k, _ in self.pairs:
+            yield k
+
 
 if __name__ == '__main__':
     unittest.main()
