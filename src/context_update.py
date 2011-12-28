@@ -105,7 +105,7 @@ class _Transition(object):
 
         Returns the context after the given token.
         """
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def raw_text(self, match):
         """
@@ -737,7 +737,8 @@ def _process_next_token(text, context):
         next_context = STATE_ERROR
         normalized_text = text
 
-    if not num_consumed and state_of(next_context) == state_of(context):
+    if (not num_consumed
+        and state_of(next_context) == state_of(context)):  # pragma: no cover
         # Infinite loop.
         raise Exception('inf loop. for %r in %s'
                         % (text, debug.context_to_string(context)))
@@ -878,8 +879,8 @@ def process_raw_text(raw_text, context):
                     normalized.write('"')
             else:
                 # Whole tail is part of an unterminated attribute.
-                if attr_value_end != len(raw_text):
-                    raise Exception()  # Illegal state.
+                if attr_value_end != len(raw_text):  # pragma: no cover
+                    raise AssertionError()  # Illegal state.
                 raw_text = ""
         if is_error_context(context):
             return context, None, prior_context, prior_raw_text

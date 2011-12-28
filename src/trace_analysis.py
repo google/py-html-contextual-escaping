@@ -53,13 +53,13 @@ class Analyzer(object):
 
         Returns the state after the step_value.
         """
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def join(self, states, debug_hint=None):
         """
         Finds the bottom of the given states.
         """
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def no_steady_state(self, states, debug_hint=None):
         """
@@ -70,4 +70,4 @@ class Analyzer(object):
         Returns an error state or some other state that can be used to
         transmit this fact to the top caller.
         """
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
