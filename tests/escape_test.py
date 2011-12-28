@@ -130,6 +130,27 @@ class EscapeTest(unittest.TestCase):
                 "<a href='//example.com:8000/foo/bar?a=b&amp;c=d'>",
                 ),
             (
+                "hrefGoodProtocolPassed",
+                '<a href={{"http://oreilly.com/O\'Reilly Animals(1)<2>.htm"}}>',
+                ('<a href="'
+                 'http://oreilly.com/O%27Reilly%20Animals%281%29%3c2%3e.htm'
+                 '">'),
+                ),
+            (
+                "relUrl1",
+                '<a href=http://example.com/{{"file(1)<2>.htm?q=blah&hl=en"}}>',
+                ('<a href="'
+                 'http://example.com/file%281%29%3c2%3e.htm?q=blah&amp;hl=en'
+                 '">'),
+                ),
+            (
+                "relUrl2",
+                '<a href=http://{{"host:80/file(1)<2>.htm?q=blah&hl=en"}}>',
+                ('<a href="'
+                 'http://host:80/file%281%29%3c2%3e.htm?q=blah&amp;hl=en'
+                 '">'),
+                ),
+            (
                 "pathRelativeURLStart",
                 '<a href="{{"/javascript:80/foo/bar"}}">',
                 '<a href="/javascript:80/foo/bar">',
@@ -398,6 +419,16 @@ class EscapeTest(unittest.TestCase):
                  r" 'http\3a \2f \2f oreilly.com\2f "
                  r"O\27 Reilly Animals\28 1\29 \3c 2\3e "
                  r"\3b \7b \7d .html'"
+                 r'">'),
+                ),
+            (
+                "styleURLAuthPartNormalized",
+                ('<a style="background: '
+                 r"'http://{{'oreilly.com:80/O\'Reilly Animals(1)<2>;{}.htm'}}'"
+                 '">'),
+                (r'<a style="background: '
+                 r"'http://oreilly.com\3a 80\2f "
+                 r"O\27 Reilly Animals\28 1\29 \3c 2\3e \3b \7b \7d .htm'"
                  r'">'),
                 ),
             (

@@ -61,6 +61,9 @@ class HtmlTest(unittest.TestCase):
         self.assertEquals(
             want, got, 'reversible:\n\t%r\n!=\n\t%r' % (want, got))
 
+        self.assertEquals('42', escaping.escape_html(42))
+        self.assertEquals('', escaping.escape_html(None))
+
     def test_strip_tags(self):
         """
         Test the tag stripper that is used to embed known safe HTML content

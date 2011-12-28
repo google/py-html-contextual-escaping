@@ -38,6 +38,7 @@ mapping function names to the python functions that implement them.
 """
 
 import cStringIO as StringIO
+import collections
 import escaping
 import re
 
@@ -53,10 +54,10 @@ for _builtin_fn in escaping.SANITIZER_FOR_ESC_MODE:
 class Env(object):
     """Templates and the environment in which they can be executed."""
 
-    def __init__(self, data, fns, templates):
+    def __init__(self, data=None, fns=None, templates=None):
         self.data = data
-        self.fns = fns
-        self.templates = templates
+        self.fns = fns or _BUILTIN_FNS
+        self.templates = templates or {}
 
     def with_data(self, data):
         """
@@ -64,6 +65,19 @@ class Env(object):
         with the given data value.
         """
         return Env(data=data, fns=self.fns, templates=self.templates)
+
+    def with_fns(self, fns):
+        """
+        Returns an environment with the same templates and data value but
+        with the given function map in addition.
+        """
+        all_fns = dict(self.fns)
+        for name in fns:
+            assert type(name) in (str, unicode), name
+            fun = fns[name]
+            assert isinstance(fun, collections.Callable), name
+            all_fns[name] = fun
+        return Env(self.data, all_fns, self.templates)
 
     def execute(self, name, out):
         """
@@ -75,14 +89,16 @@ class Env(object):
     def sexecute(self, name):
         """Returns the result of executing the named template as a string."""
         buf = StringIO.StringIO()
-        self.templates[name].execute(self, buf)
+        self.execute(name, buf)
         return buf.getvalue()
 
     def __str__(self):
         """Returns a form parseable by parse_templates."""
+        names = self.templates.keys()
+        names.sort()
         return '\n\n'.join(
-            [("{{define %r}}%s{{end}}" % (name, body))
-             for (name, body) in self.templates.iteritems()])
+            [("{{define %r}}%s{{end}}" % (name, self.templates[name]))
+             for name in names])
 
     def parse_templates(self, loc, code, name=None):
         """
@@ -120,7 +136,7 @@ class Node(object):
 
     def execute(self, env, out):
         """Appends output to out, or returns the result if an expression."""
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def clone(self):
         """Returns a structural copy."""
@@ -128,11 +144,11 @@ class Node(object):
 
     def children(self):
         """Returns a tuple of the child nodes."""
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def with_children(self, children):
         """Returns a copy of this but with the given children."""
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def reduce_traces(self, start_state, analyzer):
         """
@@ -140,10 +156,10 @@ class Node(object):
 
         analyzer - obeys the contract for trace_analysis.Analyzer
         """
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def __str__(self):
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
 
 class ExprNode(Node):
@@ -154,13 +170,14 @@ class ExprNode(Node):
 
     def evaluate(self, env):
         """Returns the result of evaluating the expression in env."""
-        raise NotImplementedError()
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def execute(self, env, out):
         return self.execute(env, None)
 
     def reduce_traces(self, start_state, analyzer):
-        raise Exception()  # Trace analysis should not descend into expressions.
+        # Trace analysis should not descend into expressions.
+        raise AssertionError()  # pragma: no cover
 
 
 class _TextNode(Node):
@@ -253,8 +270,8 @@ class _ReferenceNode(ExprNode):
     def evaluate(self, env):
         data = env.data
         for prop in self.properties:
-            if data is None:
-                break
+            if not hasattr(data, 'get'):
+                return None
             data = data.get(prop)
         return data
 
@@ -300,8 +317,7 @@ class _LiteralNode(ExprNode):
 
     def __init__(self, loc, value):
         ExprNode.__init__(self, loc)
-        if type(value) not in (str, unicode, bool, int, long, float):
-            value = str(value)
+        assert type(value) in (str, unicode, bool, int, long, float)
         self.value = value
 
     def evaluate(self, env):
@@ -405,7 +421,7 @@ class _BlockNode(Node):
         """
         'if' for {{if}}...{{else}}...{{end}}.
         """
-        raise NotImplementedError('abstract')
+        raise NotImplementedError('abstract')  # pragma: no cover
 
     def __str__(self):
         else_clause = self.else_clause
@@ -556,9 +572,6 @@ def _parse_templates_into(name_to_body, loc, code, name=None):
     into an existing environment.
     """
 
-    if type(loc) in (str, unicode):
-        loc = Loc(loc)
-    assert hasattr(loc, 'src') and hasattr(loc, 'line')
     assert type(code) in (str, unicode)
     assert name is None or type(name) in (str, unicode)
 
@@ -579,8 +592,8 @@ def _parse_templates_into(name_to_body, loc, code, name=None):
          re.split(
              r'(\{\{(?:'
              r'[^\x22\x27\}]'
-             r'|\x22(?:[^\\\x22]|\\.)*\x22'
-             r'|\x27(?:[^\\\x27]|\\.)*\x27'
+             r'|\x22(?:[^\\\x22\n\r]|\\[^\n\r])*\x22?'
+             r'|\x27(?:[^\\\x27\n\r]|\\[^\n\r])*\x27?'
              r')*\}\})', code)
          if tok])
 
@@ -598,7 +611,7 @@ def _parse_templates_into(name_to_body, loc, code, name=None):
             toks.loc_at(), token[len('{{define'):-2].strip())
         name = name_expr.evaluate(None)
         if type(name) not in (str, unicode):
-            toks.fail('Expected quoted template name, not %s' % name_expr)
+            toks.fail('expected quoted template name, not %s' % name_expr)
         toks.consume()
         define(name)
         toks.expect('{{end}}')
@@ -606,7 +619,7 @@ def _parse_templates_into(name_to_body, loc, code, name=None):
     def define(name):
         """Updates name_to_body[name] or fails with an informative error"""
         if name in name_to_body:
-            toks.fail('Redefinition of %r' % name)
+            toks.fail('redefinition of %r' % name)
         name_to_body[name] = parse_list()
 
     def parse_list():
@@ -685,6 +698,10 @@ def _parse_templates_into(name_to_body, loc, code, name=None):
             if not toks.is_empty():
                 toks.fail('unparsed content %s' % toks)
 
+    # The empty input should translate to a named template with an empty body.
+    if name is not None and name not in name_to_body:
+        define(name)
+
 
 def _parse_expr(loc, toks, consume_all=True):
     """
@@ -736,7 +753,8 @@ def _parse_expr(loc, toks, consume_all=True):
         toks.skip_ignorable()
         token = toks.peek()
         if token is None:
-            toks.fail('missing expression part at end of %s' % all_toks)
+            toks.fail('missing expression part at end of %s'
+                      % (str(all_toks) or 'input'))
         loc = toks.loc_at()
         ch0 = token[0]
         if ch0 == '.':  # Reference
@@ -757,7 +775,7 @@ def _parse_expr(loc, toks, consume_all=True):
         if _NUMBER.search(token):
             toks.consume()
             if _INT.search(token):
-                number = int(token)
+                number = int(token, 0)
             else:
                 number = float(token)
             return _LiteralNode(loc, number)
@@ -804,7 +822,7 @@ def _parse_expr(loc, toks, consume_all=True):
         if not toks.is_empty():
             remainder = str(toks)
             all_code = str(all_toks)
-            toks.fail('Trailing content in expression: %s^%s'
+            toks.fail('trailing content in expression: %s^%s'
                       % (all_code[:-len(remainder)], remainder))
         return expr
     return expr, toks
@@ -846,7 +864,7 @@ class _Tokens(object):
         """
         Raises a parse exception including the location of the cursor.
         """
-        raise Exception('%s: %s' % (self.loc_at(), msg))
+        raise ParseError('%s: %s' % (self.loc_at(), msg))
 
     def peek(self):
         """
@@ -887,9 +905,9 @@ class _Tokens(object):
         """
         if not self.check(token):
             if self.is_empty():
-                self.fail('Expected %s at end of input' % token)
+                self.fail('expected %s at end of input' % token)
             else:
-                self.fail('Expected %s, got %s' % (token, self.peek()))
+                self.fail('expected %s, got %s' % (token, self.peek()))
 
     def __str__(self):
         """The text of the unconsumed tokens."""
@@ -977,12 +995,12 @@ _LITERAL_VALUES = {
     'False': False,
     }
 
-_INT = re.compile('\A[+-]?(0[xX][0-9A-Fa-f]|0+|[1-9][0-9]*)\Z')
+_INT = re.compile('\A[+-]?(0[xX][0-9A-Fa-f]+|0+|[1-9][0-9]*)\Z')
 
 _NUMBER = re.compile(
     '\A[+-]?('
     # Hex
-    '0[xX][0-9A-Fa-f]'
+    '0[xX][0-9A-Fa-f]+'
     # Decimal
     '|(?:'
       # Integer part and optional fraction
@@ -993,3 +1011,12 @@ _NUMBER = re.compile(
     # Optional exponent
     '(?:[eE][+-]?[0-9]+)?'
     ')\Z')
+
+
+class ParseError(BaseException):
+    """
+    Raised on an invalid parser input.
+    """
+
+    def __init__(self, msg):
+        BaseException.__init__(self, msg)
