@@ -9,6 +9,7 @@ import context
 import context_update
 import debug
 import escaping
+import functools
 import trace_analysis
 
 
@@ -145,7 +146,7 @@ class _Analyzer(trace_analysis.Analyzer):
         return start_state
 
     def join(self, states, debug_hint=None):
-        out_state = reduce(context_update.context_union, states)
+        out_state = functools.reduce(context_update.context_union, states)
         if context.is_error_context(out_state):
             # Report an error only if none was reported when the states were
             # produced.
