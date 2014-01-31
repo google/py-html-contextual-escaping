@@ -12,7 +12,7 @@ if [ -z "$PYTHON" ]; then
 	rm -f .coverage
 	export PYTHON="coverage-2.7 run -a --branch --source=$DIR/src"
     else
-	export PYTHON="python"
+	export PYTHON="python -3 -OO -t"
     fi
 fi
 
