@@ -765,7 +765,7 @@ def process_raw_text(raw_text, context):
     """
 
     cache_key = (raw_text, context)
-    cached_result = CACHE.get(cache_key)
+    cached_result = raw_text_cache.get(cache_key)
     if cached_result is not None:
         return cached_result
     def cache(result):
@@ -897,8 +897,8 @@ def process_raw_text(raw_text, context):
                     raise AssertionError()  # Illegal state.
                 raw_text = ""
         if is_error_context(context):
-            return cache(context, None, prior_context, prior_raw_text)
-    return cache(context, normalized.getvalue(), None, None)
+            return cache((context, None, prior_context, prior_raw_text))
+    return cache((context, normalized.getvalue(), None, None))
 
 
 class ContextUpdateFailure(BaseException):
