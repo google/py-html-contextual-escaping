@@ -746,6 +746,9 @@ def _process_next_token(text, context):
     return (num_consumed, next_context, normalized_text)
 
 
+RAW_TEXT_CACHE_SIZE = 128
+raw_text_cache = {}  # TODO: is there a better LRU cache than dict?
+
 def process_raw_text(raw_text, context):
     """
     raw_text - A chunk of HTML/CSS/JS.
@@ -760,6 +763,17 @@ def process_raw_text(raw_text, context):
     May raise ContextUpdateFailure which is equivalent to returning
     STATE_ERROR but with a more informative error message.
     """
+
+    cache_key = (raw_text, context)
+    cached_result = CACHE.get(cache_key)
+    if cached_result is not None:
+        return cached_result
+    def cache(result):
+        if len(raw_text_cache) > RAW_TEXT_CACHE_SIZE:
+            # TODO: find a way to eject LRU
+            raw_text_cache.popitem()
+        raw_text_cache[cache_key] = result
+        return result
 
     normalized = StringIO.StringIO()
 
@@ -883,8 +897,8 @@ def process_raw_text(raw_text, context):
                     raise AssertionError()  # Illegal state.
                 raw_text = ""
         if is_error_context(context):
-            return context, None, prior_context, prior_raw_text
-    return context, normalized.getvalue(), None, None
+            return cache(context, None, prior_context, prior_raw_text)
+    return cache(context, normalized.getvalue(), None, None)
 
 
 class ContextUpdateFailure(BaseException):
