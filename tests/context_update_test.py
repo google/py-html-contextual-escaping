@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python -OO
 
 """Unit tests for context_update.py"""
 
@@ -625,5 +625,9 @@ if __name__ == '__main__':
             escape.escape(env.templates, ('main',))
             print env.sexecute('main')
         _tmpls_from_stdin()
+    elif len(sys.argv) == 2 and '--benchmark' == sys.argv[1]:
+        sys.argv[1:] = []
+        for _ in xrange(0, 1000):
+            unittest.main(exit=False, verbosity=0)
     else:
         unittest.main()
