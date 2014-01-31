@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python -O
 
 """
 An implementation of enough of Go templates to allow testing of auto-escaping.

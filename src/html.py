@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python -O
 
 """
 HTML5 definitions including a replacement for htmlentitydefs.

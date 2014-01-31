@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python -O
 
 """
 Implements the HTML contextual escaping algorithm as defined at

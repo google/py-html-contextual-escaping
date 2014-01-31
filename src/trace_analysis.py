@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python -O
 
 """
 Support code for the trace_analysis algorithm below.

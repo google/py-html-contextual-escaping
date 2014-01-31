@@ -1,4 +1,4 @@
-#!/usr/bin/python -OO
+#!/usr/bin/env python -O
 
 """Unit tests for context_update.py"""
 

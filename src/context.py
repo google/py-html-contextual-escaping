@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python -O
 
 """
 Defines a series of symbolic name groups which allow us to represent a context

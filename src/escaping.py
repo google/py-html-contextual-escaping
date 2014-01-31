@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python -O
 
 """
 Definitions of sanitization functions and sanitized content wrappers.
