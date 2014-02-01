@@ -8,7 +8,7 @@ Usage:
     env = parse_templates(Loc('/my/template/file'), file_content)
     # Execute the templates with some data.
     template_output = env.with_data({ 'foo': 'bar' }).sexecute()
-   
+
 Template definitions contain embedded commands surrounded in {{...}}.
   {{define 'name'}}...{{end}}
       defines a template
@@ -37,9 +37,9 @@ The set of functions is determined by the environment.  Env().fns is a dict
 mapping function names to the python functions that implement them.
 """
 
-import cStringIO as StringIO
+from autoesc import escaping
+from cStringIO import StringIO
 import collections
-import escaping
 import re
 
 # Functions available by default.
@@ -88,7 +88,7 @@ class Env(object):
 
     def sexecute(self, name):
         """Returns the result of executing the named template as a string."""
-        buf = StringIO.StringIO()
+        buf = StringIO()
         self.execute(name, buf)
         return buf.getvalue()
 
@@ -238,7 +238,7 @@ class _InterpolationNode(Node):
         return (self.expr,)
 
     def with_children(self, children):
-        assert(1 == len(children))
+        assert 1 == len(children)
         return _InterpolationNode(self.loc, children[0])
 
     def to_pipeline(self):
@@ -995,22 +995,22 @@ _LITERAL_VALUES = {
     'False': False,
     }
 
-_INT = re.compile('\A[+-]?(0[xX][0-9A-Fa-f]+|0+|[1-9][0-9]*)\Z')
+_INT = re.compile(r'\A[+-]?(0[xX][0-9A-Fa-f]+|0+|[1-9][0-9]*)\Z')
 
 _NUMBER = re.compile(
-    '\A[+-]?('
+    r'\A[+-]?('
     # Hex
-    '0[xX][0-9A-Fa-f]+'
+    r'0[xX][0-9A-Fa-f]+'
     # Decimal
-    '|(?:'
+    r'|(?:'
       # Integer part and optional fraction
-      '(?:0+|[1-9][0-9]*)(?:\.[0-9]*)?'
+      r'(?:0+|[1-9][0-9]*)(?:\.[0-9]*)?'
       # Decimal point and mandatory fraction
-      '|\.[0-9]+'
-    ')'
+      r'|\.[0-9]+'
+    r')'
     # Optional exponent
-    '(?:[eE][+-]?[0-9]+)?'
-    ')\Z')
+    r'(?:[eE][+-]?[0-9]+)?'
+    r')\Z')
 
 
 class ParseError(BaseException):

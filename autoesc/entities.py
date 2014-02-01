@@ -10,7 +10,7 @@ Maps entity names (excluding & but including any ;) to codepoints.
 These are case-sensitive : unescape_html("&Gt;") != unescape_html("&gt;")
 """
 
-entity_name_to_text = {
+ENTITY_NAME_TO_TEXT = {
   "Tab;": "\x09",
   "NewLine;": "\x0a",
   "excl;": "\x21",

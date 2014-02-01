@@ -106,7 +106,7 @@ class SafeHTMLAttr(TypedContent):
 class SafeJS(TypedContent):
     """
     JS encapsulates a known safe EcmaScript5 Expression, or example,
-    `(x + y * z())`. 
+    `(x + y * z())`.
     Template authors are responsible for ensuring that typed expressions
     do not break the intended precedence and that there is no
     statement/expression ambiguity as when passing an expression like
@@ -124,11 +124,11 @@ class SafeJSStr(TypedContent):
     between quotes in a JavaScript expression.
     The string must match a series of StringCharacters:
 
-        StringCharacter :: SourceCharacter but not `\` or LineTerminator
+        StringCharacter :: SourceCharacter but not `\\` or LineTerminator
                          | EscapeSequence
 
     Note that LineContinuations are not allowed.
-    SafeJSStr('foo\\nbar') is fine, but SafeJSStr('foo\\\nbar') is not.
+    SafeJSStr('foo\\\\nbar') is fine, but SafeJSStr('foo\\\\\\nbar') is not.
     """
 
     def __init__(self, content):

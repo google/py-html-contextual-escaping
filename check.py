@@ -4,4 +4,4 @@ from pylint import lint
 
 linter = lint.PyLinter()
 linter.load_default_plugins()
-linter.check(['autoesc', 'tests'])
+linter.check(['autoesc'])

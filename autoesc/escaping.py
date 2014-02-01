@@ -10,9 +10,7 @@ These sanitization functions correspond to values of the ESC_MODE_* enum
 defined in the context module.
 """
 
-import content
-import context
-import html
+from autoesc import content, context, html
 import json
 import re
 
@@ -134,7 +132,7 @@ def esc_mode_for_hole(context_before):
     Given a context in which an untrusted value hole appears, computes the
     escaping modes needed to render that untrusted value safe for interpolation
     and the context after the hole.
-    
+
     context_before - The input context before the substitution.
 
     Returns (context after, (escaping_modes...,))
@@ -405,7 +403,7 @@ def escape_js_value(value):
     Returns a JavaScript code representation of the input.
     """
 
-    if (isinstance(value, content.TypedContent)):
+    if isinstance(value, content.TypedContent):
         if value.kind == content.CONTENT_KIND_JS:
             value = value.content
             # We can't allow a value that contains the substring '</script'.

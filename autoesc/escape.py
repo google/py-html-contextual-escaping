@@ -5,12 +5,8 @@ Implements the HTML contextual escaping algorithm as defined at
 http://js-quasis-libraries-and-repl.googlecode.com/svn/trunk/safetemplate.html
 """
 
-import context
-import context_update
-import debug
-import escaping
+from autoesc import context, context_update, debug, escaping, trace_analysis
 import functools
-import trace_analysis
 
 
 def escape(name_to_body, public_template_names, start_state=context.STATE_TEXT):
@@ -271,7 +267,7 @@ class _Analyzer(trace_analysis.Analyzer):
         end_ctx = body.reduce_traces(start_ctx, analyzer)
 
         if not ctx_filter(end_ctx, analyzer):
-            return end_ctx, analyzer.errors            
+            return end_ctx, analyzer.errors
 
         # Copy inferences and pending changes from analyzer back into self.
         _copyinto(self.templates, analyzer.templates)

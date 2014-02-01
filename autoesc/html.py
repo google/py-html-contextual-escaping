@@ -4,7 +4,7 @@
 HTML5 definitions including a replacement for htmlentitydefs.
 """
 
-import content
+from autoesc import content
 import re
 
 CONTENT_KIND_UNSAFE = -1
@@ -165,7 +165,7 @@ def attr_type(attr_name):
     return CONTENT_KIND_UNSAFE
 
 
-entity_name_to_text_ = None
+ENTITY_NAME_TO_TEXT_ = None
 
 def unescape_html(html):
     """
@@ -175,10 +175,10 @@ def unescape_html(html):
     # Fast path for common case.
     if html.find("&") < 0:
         return html
-    global entity_name_to_text_
-    if not entity_name_to_text_:
-        import entities
-        entity_name_to_text_ = entities.entity_name_to_text
+    global ENTITY_NAME_TO_TEXT_
+    if not ENTITY_NAME_TO_TEXT_:
+        from autoesc import entities
+        ENTITY_NAME_TO_TEXT_ = entities.ENTITY_NAME_TO_TEXT
     return re.sub(
         '&(?:#(?:[xX]([0-9A-Fa-f]+);|([0-9]+);)|([a-zA-Z0-9]+;?))',
         _decode_html_entity, html)
@@ -196,7 +196,7 @@ def _decode_html_entity(match):
     if group:
         return _unichr(int(group, 10))
     group = match.group(3)
-    return entity_name_to_text_.get(
+    return ENTITY_NAME_TO_TEXT_.get(
         group,
         # Treat "&noSuchEntity;" as "&noSuchEntity;"
         match.group(0))

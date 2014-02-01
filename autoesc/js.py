@@ -4,7 +4,7 @@
 Utilities for dealing with JavaScript source code.
 """
 
-import context
+from autoesc import context
 import re
 
 

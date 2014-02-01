@@ -45,15 +45,15 @@ class File(object):
         self.ctx_ = ctx
 
 
-    def write_safe(self, *strs):
+    def write_safe(self, *safe_strs):
         ctx = self.ctx_
         underlying = self.underlying_
-        for str in strs:
+        for safe_str in safe_strs:
             end_ctx, safe_text, before_error, unprocessed = (
-                context_update.process_raw_text(str, ctx))
+                context_update.process_raw_text(safe_str, ctx))
             if context.is_error_context(end_ctx):
                 raise AutoescapeError(
                     safe_text[:-len(unprocessed)], unprocessed)
             ctx = end_ctx
-            underlying.write(str)
+            underlying.write(safe_str)
         self.ctx_ = ctx

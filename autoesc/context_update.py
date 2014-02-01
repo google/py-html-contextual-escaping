@@ -5,16 +5,11 @@ Defines the rules for propagating context across snippets of static template
 content.
 """
 
-from context import *
-import content
-import debug
-import escaping
+from autoesc.context import *
+from autoesc import content, debug, escaping, html, js
 from functools32 import lru_cache
-import html
-import js
+from cStringIO import StringIO
 import re
-import StringIO
-
 
 def context_union(context0, context1):
     """
@@ -449,7 +444,7 @@ class _CssUriTransition(_Transition):
             state = STATE_CSSSQ_URL
         else:
             state = STATE_CSS_URL
-        return (prior & ~( STATE_ALL | URL_PART_ALL)) | state | URL_PART_NONE
+        return (prior & ~(STATE_ALL | URL_PART_ALL)) | state | URL_PART_NONE
 
 
 class _DivPreceder(_Transition):
@@ -763,7 +758,7 @@ def process_raw_text(raw_text, context):
     STATE_ERROR but with a more informative error message.
     """
 
-    normalized = StringIO.StringIO()
+    normalized = StringIO()
 
     while raw_text:
         prior_context, prior_raw_text = context, raw_text

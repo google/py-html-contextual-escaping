@@ -2,7 +2,7 @@
 Utility functions that aid in debugging context propagation problems.
 """
 
-import context
+from autoesc import context
 
 def _context_enum_name_table(prefix):
     """
