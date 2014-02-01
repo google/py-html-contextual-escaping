@@ -164,6 +164,9 @@ def attr_type(attr_name):
         return content.CONTENT_KIND_PLAIN
     return CONTENT_KIND_UNSAFE
 
+
+entity_name_to_text_ = None
+
 def unescape_html(html):
     """
     Given HTML that would parse to a single text node, returns the text
@@ -172,8 +175,10 @@ def unescape_html(html):
     # Fast path for common case.
     if html.find("&") < 0:
         return html
-    if not _ENTITY_NAME_TO_EXPANSION:
-        _load_entities()
+    global entity_name_to_text_
+    if not entity_name_to_text_:
+        import entities
+        entity_name_to_text_ = entities.entity_name_to_text
     return re.sub(
         '&(?:#(?:[xX]([0-9A-Fa-f]+);|([0-9]+);)|([a-zA-Z0-9]+;?))',
         _decode_html_entity, html)
@@ -191,7 +196,7 @@ def _decode_html_entity(match):
     if group:
         return _unichr(int(group, 10))
     group = match.group(3)
-    return _ENTITY_NAME_TO_EXPANSION.get(
+    return entity_name_to_text_.get(
         group,
         # Treat "&noSuchEntity;" as "&noSuchEntity;"
         match.group(0))
@@ -208,36 +213,3 @@ def _unichr(codepoint):
     return '%s%s' % (
         unichr(0xd800 | (codepoint >> 10)),
         unichr(0xdc00 | (codepoint & 0x3ff)))
-
-
-# Maps entity names (excluding & but including any ;) to codepoints.
-# These are case-sensitive : unescape_html("&Gt;") != unescape_html("&gt;")
-_ENTITY_NAME_TO_EXPANSION = {}
-
-def _load_entities():
-    """
-    Loads entities from http://svn.whatwg.org/webapps/entities-unicode.inc
-    and http://svn.whatwg.org/webapps/entities-legacy.inc
-    """
-    import os.path
-    import sys
-    for path_dir in sys.path:
-        entity_file = os.path.join(path_dir, 'entities.inc')
-        if os.path.exists(entity_file):
-            in_file = open(entity_file, 'rb')
-            try:
-                entities_tab_delim = in_file.read()
-            finally:
-                in_file.close()
-                in_file = None
-            lines = entities_tab_delim.split('\n')
-            for line in lines:
-                if not line:
-                    continue
-                # A line is like "gt;\t3c", an entity name with ; if required
-                # followed by a tab followed by one or more hex numbers
-                # separated by tabs.
-                records = line.split('\t')
-                _ENTITY_NAME_TO_EXPANSION[records[0]] = ''.join(
-                    [_unichr(int(record, 16)) for record in records[1:]])
-            break

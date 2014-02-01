@@ -22,7 +22,7 @@ for testmodule in tests/*_test.py; do
 	echo
 	echo $testmodule
 	echo $testmodule | tr ' -~' '='
-	PYTHONPATH="$DIR/autoesc:$DIR/tests:$PYTHONPATH" $PYTHON "$testmodule"
+	PYTHONPATH="$DIR:$PYTHONPATH" $PYTHON "$testmodule"
     fi
 done
 

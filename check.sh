@@ -6,6 +6,6 @@ fi
 
 export DIR="$(dirname "$0")"
 
-export PYTHONPATH="$DIR/autoesc:$DIR/tests:$PYTHONPATH"
+export PYTHONPATH="$DIR:$PYTHONPATH"
 
 find autoesc tests -name \*.py | xargs "$PYLINT"

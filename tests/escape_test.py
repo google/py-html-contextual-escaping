@@ -2,10 +2,8 @@
 
 """Unit tests for module escape"""
 
-import content
-import escape
+from autoesc import content, escape, template
 import sys
-import template
 import unittest
 
 

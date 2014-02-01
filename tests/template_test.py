@@ -4,9 +4,9 @@
 Tests for template module.
 """
 
+from autoesc import template
 import StringIO
 import sys
-import template
 import unittest
 
 class TemplateTest(unittest.TestCase):

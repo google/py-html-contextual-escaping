@@ -2,7 +2,7 @@
 
 """Testcases for module content"""
 
-import escaping
+from autoesc import escaping
 import test_common
 import unittest
 

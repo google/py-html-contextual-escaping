@@ -2,15 +2,10 @@
 
 """Unit tests for context_update.py"""
 
-import content
-import context
-import context_update
-import debug
-import escape
-import escaping
+from autoesc import content, context, context_update, debug, \
+                    escape, escaping, template
 import sys
-import template
-import test_common
+from tests import test_common
 import unittest
 
 

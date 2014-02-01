@@ -2,9 +2,7 @@
 
 """Testcases for module html"""
 
-import content
-import escaping
-import html
+from autoesc import content, escaping, html
 import test_common
 import unittest
 

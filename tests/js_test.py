@@ -2,11 +2,7 @@
 
 """Testcases for module js"""
 
-import content
-import context
-import debug
-import escaping
-import js
+from autoesc import content, context, debug, escaping, js
 import math
 import re
 import test_common

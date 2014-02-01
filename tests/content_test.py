@@ -2,9 +2,7 @@
 
 """Testcases for module content"""
 
-import content
-import escape
-import template
+from autoesc import content, escape, template
 import unittest
 
 class ContentTest(unittest.TestCase):
