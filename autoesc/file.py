@@ -6,7 +6,7 @@ propagates context over safe chunks while picking appropriate escapers
 for untrusted values.
 """
 
-import context_update
+from autoesc import context, context_update, escaping
 
 class File(object):
     """
@@ -28,7 +28,7 @@ class File(object):
         self.underlying_.close()
 
 
-    def write(self, **vals):
+    def write(self, *vals):
         ctx = context.force_epsilon_transition(self.ctx_)
         underlying = self.underlying_
         for val in vals:
@@ -39,13 +39,13 @@ class File(object):
                 raise AutoescapeError(problem)
             ctx = ctx_after
             for esc_mode in esc_modes:
-                escaper = escaping.SANITIZERS_FOR_ESC_MODE[esc_mode]
+                escaper = escaping.SANITIZER_FOR_ESC_MODE[esc_mode]
                 val = escaper(val)
             underlying.write(val)
         self.ctx_ = ctx
 
 
-    def write_safe(self, **strs):
+    def write_safe(self, *strs):
         ctx = self.ctx_
         underlying = self.underlying_
         for str in strs:
@@ -56,4 +56,4 @@ class File(object):
                     safe_text[:-len(unprocessed)], unprocessed)
             ctx = end_ctx
             underlying.write(str)
-        self.ctx = ctx
+        self.ctx_ = ctx
