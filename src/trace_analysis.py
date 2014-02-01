@@ -40,11 +40,11 @@ class Analyzer(object):
           3. to_callee() -> template name
 
         Values that return a non-None value from to_pipeline() must
-        provate a with_pipeline(pipeline) methods that returns a clone
+        provide a with_pipeline(pipeline) methods that returns a clone
         but with any inserted pipeline elements.
 
         Values that return a non-None value from to_raw_content() must
-        provate a with_raw_content(str) methods that returns a clone
+        provide a with_raw_content(str) methods that returns a clone
         but with the given raw content instead.
 
         Values that return a non-None value from to_callee() must
