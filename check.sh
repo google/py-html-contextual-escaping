@@ -1,11 +1,11 @@
 #!/bin/bash
 
 if [ -z "$PYLINT" ]; then
-  export PYLINT=pylint-2.6
+  export PYLINT=pylint-2.7
 fi
 
 export DIR="$(dirname "$0")"
 
-export PYTHONPATH="$DIR/src:$DIR/tests:$PYTHONPATH"
+export PYTHONPATH="$DIR/autoesc:$DIR/tests:$PYTHONPATH"
 
-find src tests -name \*.py | xargs "$PYLINT"
+find autoesc tests -name \*.py | xargs "$PYLINT"

@@ -10,7 +10,7 @@ export DIR="$(dirname "$0")"
 if [ -z "$PYTHON" ]; then
     if [ -n "$(which coverage-2.7)" ]; then
 	rm -f .coverage
-	export PYTHON="coverage-2.7 run -a --branch --source=$DIR/src"
+	export PYTHON="coverage-2.7 run -a --branch --source=$DIR/autoesc"
     else
 	export PYTHON="python -3 -OO -t"
     fi
@@ -22,7 +22,7 @@ for testmodule in tests/*_test.py; do
 	echo
 	echo $testmodule
 	echo $testmodule | tr ' -~' '='
-	PYTHONPATH="$DIR/src:$DIR/tests:$PYTHONPATH" $PYTHON "$testmodule"
+	PYTHONPATH="$DIR/autoesc:$DIR/tests:$PYTHONPATH" $PYTHON "$testmodule"
     fi
 done
 
